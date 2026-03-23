@@ -73,15 +73,16 @@ for stock in stocks:
 # Convert to DataFrame
 df = pd.DataFrame(results)
 
-# Sort
-df = df.sort_values(by="Probability", ascending=False)
+if df.empty:
+    print("❌ No data available. Check errors above.")
+else:
+    df = df.sort_values(by="Probability", ascending=False)
 
-# Apply filters (WITH TREND)
-buy_signals = df[(df['Probability'] > 0.6) & (df['Trend'] == True)]
-sell_signals = df[(df['Probability'] < 0.4) & (df['Trend'] == False)]
+    buy_signals = df[(df['Probability'] > 0.6) & (df['Trend'] == True)]
+    sell_signals = df[(df['Probability'] < 0.4) & (df['Trend'] == False)]
 
-print("\n🔥 STRONG BUY SIGNALS:\n")
-print(buy_signals)
+    print("\n🔥 STRONG BUY SIGNALS:\n")
+    print(buy_signals)
 
-print("\n⚠️ STRONG SELL SIGNALS:\n")
-print(sell_signals)
+    print("\n⚠️ STRONG SELL SIGNALS:\n")
+    print(sell_signals)
