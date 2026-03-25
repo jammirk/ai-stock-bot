@@ -13,8 +13,10 @@ max_per_stock = 0.4
 risk_per_trade = 0.02
 stop_loss_pct = 0.05
 
-BOT_TOKEN = "7948884323:AAGzgVAa_Xmf9X89o4XsueVX4sJkA9EX_9k"
-CHAT_ID = "967212314"
+import os
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
 # ==============================
 # 🔹 STEP 1: STOCK LIST
