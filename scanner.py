@@ -131,21 +131,19 @@ else:
 BOT_TOKEN = "7948884323:AAGzgVAa_Xmf9X89o4XsueVX4sJkA9EX_9k"
 CHAT_ID = "967212314"
 
-# Only send if data exists
 if not df.empty:
 
-    # Prepare message
     message = "📊 AI STOCK SIGNALS\n\n"
 
+    # Portfolio
     message += "💼 AI PORTFOLIO:\n"
+    if portfolio:
+        for p in portfolio:
+            message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']}\n"
+    else:
+        message += "No strong portfolio today\n"
 
-if portfolio:
-    for p in portfolio:
-        message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']}\n"
-else:
-    message += "No strong portfolio today\n"
-
-message += "\n"
+    message += "\n"
 
     # BUY signals
     message += "🔥 BUY SIGNALS:\n"
