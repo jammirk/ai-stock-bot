@@ -102,31 +102,34 @@ else:
 BOT_TOKEN = "7948884323:AAHfT_GLbylF96YIyr2MtY6nOcCUDvZaXpI"
 CHAT_ID = "967212314"
 
-# Prepare message
-message = "📊 AI STOCK SIGNALS\n\n"
+# Only send if data exists
+if not df.empty:
 
-# BUY signals
-message += "🔥 BUY SIGNALS:\n"
-if not buy_signals.empty:
-    for i, row in buy_signals.iterrows():
-        label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
-message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
-else:
-    message += "No strong buys\n"
+    # Prepare message
+    message = "📊 AI STOCK SIGNALS\n\n"
 
-# SELL signals
-message += "\n⚠️ SELL SIGNALS:\n"
-if not sell_signals.empty:
-    for i, row in sell_signals.iterrows():
-        label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
-message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
-else:
-    message += "No strong sells\n"
+    # BUY signals
+    message += "🔥 BUY SIGNALS:\n"
+    if not buy_signals.empty:
+        for i, row in buy_signals.iterrows():
+            label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
+            message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
+    else:
+        message += "No strong buys\n"
 
-# Send message
-url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    # SELL signals
+    message += "\n⚠️ SELL SIGNALS:\n"
+    if not sell_signals.empty:
+        for i, row in sell_signals.iterrows():
+            label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
+            message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
+    else:
+        message += "No strong sells\n"
 
-requests.post(url, data={
-    "chat_id": CHAT_ID,
-    "text": message
-})
+    # Send message
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": message
+    })
