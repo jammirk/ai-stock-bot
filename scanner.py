@@ -99,7 +99,7 @@ else:
     print(sell_signals)
 
 # Telegram config
-BOT_TOKEN = "7948884323:AAHfT_GLbylF96YIyr2MtY6nOcCUDvZaXpI"
+BOT_TOKEN = "7948884323:AAGzgVAa_Xmf9X89o4XsueVX4sJkA9EX_9k"
 CHAT_ID = "967212314"
 
 # Only send if data exists
