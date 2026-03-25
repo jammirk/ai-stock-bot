@@ -21,6 +21,16 @@ stocks = [
 ]
 
 results = []
+# 🚀 ADD NIFTY DATA (ADD HERE)
+nifty = yf.download("^NSEI", start="2020-01-01", end="2025-01-01")
+nifty.columns = nifty.columns.get_level_values(0)
+
+nifty_close = nifty['Close'].squeeze()
+
+nifty['MA50'] = nifty_close.rolling(50).mean()
+
+# Market trend
+market_uptrend = nifty_close.iloc[-1] > nifty['MA50'].iloc[-1]
 
 for stock in stocks:
     print(f"Processing {stock}...")
@@ -85,9 +95,12 @@ if df.empty:
 
 else:
     df = df.sort_values(by="Probability", ascending=False)
+    
         # 🔥 STEP: Select top stocks
+if market_uptrend:
     top_stocks = df[(df['Probability'] > 0.55) & (df['Trend'] == True)].head(3)
-
+else:
+    top_stocks = pd.DataFrame()  # no trades in bad market
     # 🔥 STEP : Allocate capital
     # 🚀 STEP 2: MODIFY PORTFOLIO LOGIC (ADD HERE)
 
@@ -140,6 +153,8 @@ if not top_stocks.empty:
     print("\n⚠️ STRONG SELL SIGNALS:\n")
     print(sell_signals)
 
+    print("\n📈 MARKET TREND:", "UPTREND ✅" if market_uptrend else "DOWNTREND ❌")
+
 # Telegram config
 BOT_TOKEN = "7948884323:AAGzgVAa_Xmf9X89o4XsueVX4sJkA9EX_9k"
 CHAT_ID = "967212314"
@@ -149,6 +164,7 @@ if not df.empty:
     message = "📊 AI STOCK SIGNALS\n\n"
 
     # Portfolio
+    message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
     message += "💼 AI PORTFOLIO:\n"
     if portfolio:
         for p in portfolio:
