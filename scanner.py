@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import ta
+import requests
 from xgboost import XGBClassifier
 
 # List of stocks (you can expand later)
@@ -86,3 +87,34 @@ else:
 
     print("\n⚠️ STRONG SELL SIGNALS:\n")
     print(sell_signals)
+
+# Telegram config
+BOT_TOKEN = "7948884323:AAHfT_GLbylF96YIyr2MtY6nOcCUDvZaXpI"
+CHAT_ID = "967212314"
+
+# Prepare message
+message = "📊 AI STOCK SIGNALS\n\n"
+
+# BUY signals
+message += "🔥 BUY SIGNALS:\n"
+if not buy_signals.empty:
+    for i, row in buy_signals.iterrows():
+        message += f"{row['Stock']} - {round(row['Probability'], 2)}\n"
+else:
+    message += "No strong buys\n"
+
+# SELL signals
+message += "\n⚠️ SELL SIGNALS:\n"
+if not sell_signals.empty:
+    for i, row in sell_signals.iterrows():
+        message += f"{row['Stock']} - {round(row['Probability'], 2)}\n"
+else:
+    message += "No strong sells\n"
+
+# Send message
+url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+requests.post(url, data={
+    "chat_id": CHAT_ID,
+    "text": message
+})
