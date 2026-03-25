@@ -63,6 +63,14 @@ for stock in stocks:
         data['MACD_signal'] = macd.macd_signal()
 
         data['Returns'] = close.pct_change()
+        
+        # 🔥 ATR (volatility)
+        atr = ta.volatility.AverageTrueRange(
+            high=data['High'],
+            low=data['Low'],
+            close=close
+        )
+        data['ATR'] = atr.average_true_range()
 
         # Target
         data['Future_Return'] = close.shift(-5) / close - 1
@@ -84,11 +92,15 @@ for stock in stocks:
 
         prob = model.predict_proba(X.iloc[-1:])[:, 1][0]
         trend = data.iloc[-1]['Trend']
+        atr_value = data.iloc[-1]['ATR']
+        price = close.iloc[-1]
 
         results.append({
             "Stock": stock,
             "Probability": prob,
-            "Trend": trend
+            "Trend": trend,
+            "ATR": atr_value,
+            "Price": price
         })
 
     except Exception as e:
@@ -132,10 +144,16 @@ else:
             allocation = min(allocation, capital * max_per_stock)
 
             portfolio.append({
+                # 🔥 Dynamic stop loss
+            stop_loss_price = row['Price'] - (row['ATR'] * 2)
+            stop_loss_pct_dynamic = ((row['Price'] - stop_loss_price) / row['Price']) * 100
+            
+            portfolio.append({
                 "Stock": row['Stock'],
                 "Probability": row['Probability'],
                 "Allocation": round(allocation),
-                "StopLoss": f"{int(stop_loss_pct*100)}%"
+                "StopLoss": f"{round(stop_loss_pct_dynamic,1)}%",
+                "SL_Price": round(stop_loss_price, 2)
             })
 
     # ==============================
@@ -145,7 +163,7 @@ else:
 
     if portfolio:
         for p in portfolio:
-            print(f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']}")
+            print(f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}")
     else:
         print("No strong portfolio today")
 
@@ -168,7 +186,7 @@ else:
     message += "💼 AI PORTFOLIO:\n"
     if portfolio:
         for p in portfolio:
-            message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']}\n"
+            message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}\n"
     else:
         message += "No strong portfolio today\n"
 
