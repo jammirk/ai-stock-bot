@@ -76,15 +76,19 @@ df = pd.DataFrame(results)
 
 if df.empty:
     print("❌ No data available. Check errors above.")
+
 else:
     df = df.sort_values(by="Probability", ascending=False)
 
+    # ✅ Print all scores
     print("\n📊 ALL STOCK SCORES:\n")
     print(df)
-    
+
+    # Filters
     buy_signals = df[(df['Probability'] > 0.6) & (df['Trend'] == True)]
     sell_signals = df[(df['Probability'] < 0.4) & (df['Trend'] == False)]
 
+    # Top 3 only
     buy_signals = buy_signals.head(3)
     sell_signals = sell_signals.head(3)
 
