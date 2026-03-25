@@ -4,3 +4,4 @@ numpy
 ta
 xgboost
 scikit-learn
+requests
