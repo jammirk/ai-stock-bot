@@ -130,31 +130,31 @@ else:
     else:
         top_stocks = pd.DataFrame()
 
-    # ==============================
-    # 🔹 STEP 6: PORTFOLIO ALLOCATION
-    # ==============================
-    portfolio = []
+   
+ # ==============================
+# 🔹 STEP 6: PORTFOLIO ALLOCATION
+# ==============================
+portfolio = []
 
-    if not top_stocks.empty:
-        total_prob = top_stocks['Probability'].sum()
+if not top_stocks.empty:
+    total_prob = top_stocks['Probability'].sum()
 
-        for _, row in top_stocks.iterrows():
-            weight = row['Probability'] / total_prob
-            allocation = capital * weight
-            allocation = min(allocation, capital * max_per_stock)
+    for _, row in top_stocks.iterrows():
+        weight = row['Probability'] / total_prob
+        allocation = capital * weight
+        allocation = min(allocation, capital * max_per_stock)
 
-            portfolio.append({
-                # 🔥 Dynamic stop loss
-            stop_loss_price = row['Price'] - (row['ATR'] * 2)
-            stop_loss_pct_dynamic = ((row['Price'] - stop_loss_price) / row['Price']) * 100
-            
-            portfolio.append({
-                "Stock": row['Stock'],
-                "Probability": row['Probability'],
-                "Allocation": round(allocation),
-                "StopLoss": f"{round(stop_loss_pct_dynamic,1)}%",
-                "SL_Price": round(stop_loss_price, 2)
-            })
+        # 🔥 Dynamic stop loss (CORRECT PLACE)
+        stop_loss_price = row['Price'] - (row['ATR'] * 2)
+        stop_loss_pct_dynamic = ((row['Price'] - stop_loss_price) / row['Price']) * 100
+
+        portfolio.append({
+            "Stock": row['Stock'],
+            "Probability": row['Probability'],
+            "Allocation": round(allocation),
+            "StopLoss": f"{round(stop_loss_pct_dynamic,1)}%",
+            "SL_Price": round(stop_loss_price, 2)
+        })
 
     # ==============================
     # 🔹 STEP 7: PRINT PORTFOLIO
