@@ -5,6 +5,8 @@ import ta
 import requests
 from xgboost import XGBClassifier
 
+capital = 100000  # change as needed
+
 # List of stocks (you can expand later)
 stocks = [
     "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
@@ -79,6 +81,33 @@ if df.empty:
 
 else:
     df = df.sort_values(by="Probability", ascending=False)
+        # 🔥 STEP: Select top stocks
+    top_stocks = df[(df['Probability'] > 0.55) & (df['Trend'] == True)].head(3)
+
+    # 🔥 STEP : Allocate capital
+    portfolio = []
+
+    if not top_stocks.empty:
+        total_prob = top_stocks['Probability'].sum()
+
+        for i, row in top_stocks.iterrows():
+            weight = row['Probability'] / total_prob
+            allocation = round(capital * weight)
+
+            portfolio.append({
+                "Stock": row['Stock'],
+                "Probability": row['Probability'],
+                "Allocation": allocation
+            })
+
+    # 🔥 STEP: Print portfolio
+    print("\n💼 AI PORTFOLIO:\n")
+
+    if portfolio:
+        for p in portfolio:
+            print(f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']}")
+    else:
+        print("No strong portfolio today")
 
     # ✅ Print all scores
     print("\n📊 ALL STOCK SCORES:\n")
@@ -107,6 +136,16 @@ if not df.empty:
 
     # Prepare message
     message = "📊 AI STOCK SIGNALS\n\n"
+
+    message += "💼 AI PORTFOLIO:\n"
+
+if portfolio:
+    for p in portfolio:
+        message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']}\n"
+else:
+    message += "No strong portfolio today\n"
+
+message += "\n"
 
     # BUY signals
     message += "🔥 BUY SIGNALS:\n"
