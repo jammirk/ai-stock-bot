@@ -5,13 +5,20 @@ import ta
 import requests
 from xgboost import XGBClassifier
 
+# ==============================
+# 🔹 STEP 0: CONFIG
+# ==============================
 capital = 100000
+max_per_stock = 0.4
+risk_per_trade = 0.02
+stop_loss_pct = 0.05
 
-max_per_stock = 0.4      # max 40% in one stock
-risk_per_trade = 0.02    # risk 2% per trade
-stop_loss_pct = 0.05     # 5% stop loss
+BOT_TOKEN = "7948884323:AAGzgVAa_Xmf9X89o4XsueVX4sJkA9EX_9k"
+CHAT_ID = "967212314"
 
-# List of stocks (you can expand later)
+# ==============================
+# 🔹 STEP 1: STOCK LIST
+# ==============================
 stocks = [
     "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
     "HINDUNILVR.NS","ITC.NS","LT.NS","SBIN.NS","AXISBANK.NS",
@@ -21,22 +28,25 @@ stocks = [
 ]
 
 results = []
-# 🚀 ADD NIFTY DATA (ADD HERE)
+
+# ==============================
+# 🔹 STEP 2: MARKET FILTER (NIFTY)
+# ==============================
 nifty = yf.download("^NSEI", start="2020-01-01", end="2025-01-01")
 nifty.columns = nifty.columns.get_level_values(0)
 
 nifty_close = nifty['Close'].squeeze()
-
 nifty['MA50'] = nifty_close.rolling(50).mean()
 
-# Market trend
 market_uptrend = nifty_close.iloc[-1] > nifty['MA50'].iloc[-1]
 
+# ==============================
+# 🔹 STEP 3: STOCK LOOP
+# ==============================
 for stock in stocks:
     print(f"Processing {stock}...")
 
     try:
-        # Download data
         data = yf.download(stock, start="2020-01-01", end="2025-01-01")
         data.columns = data.columns.get_level_values(0)
 
@@ -60,7 +70,7 @@ for stock in stocks:
 
         data = data.dropna()
 
-        features = ['RSI', 'MA20', 'MA50', 'MACD', 'MACD_signal', 'Returns']
+        features = ['RSI','MA20','MA50','MACD','MACD_signal','Returns']
         X = data[features]
         y = data['Target']
 
@@ -69,14 +79,11 @@ for stock in stocks:
         X_train = X[:split]
         y_train = y[:split]
 
-        # Train model
         model = XGBClassifier(n_estimators=100, max_depth=4)
         model.fit(X_train, y_train)
 
-        # Latest prediction
-        latest = data.iloc[-1]
         prob = model.predict_proba(X.iloc[-1:])[:, 1][0]
-        trend = latest['Trend']
+        trend = data.iloc[-1]['Trend']
 
         results.append({
             "Stock": stock,
@@ -87,46 +94,53 @@ for stock in stocks:
     except Exception as e:
         print(f"Error in {stock}: {e}")
 
-# Convert to DataFrame
+# ==============================
+# 🔹 STEP 4: DATAFRAME
+# ==============================
 df = pd.DataFrame(results)
 
 if df.empty:
-    print("❌ No data available. Check errors above.")
+    print("❌ No data available")
 
 else:
     df = df.sort_values(by="Probability", ascending=False)
-    
-        # 🔥 STEP: Select top stocks
-if market_uptrend:
-    top_stocks = df[(df['Probability'] > 0.55) & (df['Trend'] == True)].head(3)
-else:
-    top_stocks = pd.DataFrame()  # no trades in bad market
-    # 🔥 STEP : Allocate capital
-    # 🚀 STEP 2: MODIFY PORTFOLIO LOGIC (ADD HERE)
 
-portfolio = []
+    print("\n📊 ALL STOCK SCORES:\n")
+    print(df)
 
-if not top_stocks.empty:
-    total_prob = top_stocks['Probability'].sum()
+    print("\n📈 MARKET TREND:", "UPTREND ✅" if market_uptrend else "DOWNTREND ❌")
 
-    for i, row in top_stocks.iterrows():
-        weight = row['Probability'] / total_prob
+    # ==============================
+    # 🔹 STEP 5: PORTFOLIO SELECTION
+    # ==============================
+    if market_uptrend:
+        top_stocks = df[(df['Probability'] > 0.55) & (df['Trend'] == True)].head(3)
+    else:
+        top_stocks = pd.DataFrame()
 
-        # Raw allocation
-        allocation = capital * weight
+    # ==============================
+    # 🔹 STEP 6: PORTFOLIO ALLOCATION
+    # ==============================
+    portfolio = []
 
-        # Apply max cap per stock
-        max_allowed = capital * max_per_stock
-        allocation = min(allocation, max_allowed)
+    if not top_stocks.empty:
+        total_prob = top_stocks['Probability'].sum()
 
-        portfolio.append({
-            "Stock": row['Stock'],
-            "Probability": row['Probability'],
-            "Allocation": round(allocation),
-            "StopLoss": f"{int(stop_loss_pct*100)}%"
-        })
-        
-    # 🔥 STEP: Print portfolio
+        for _, row in top_stocks.iterrows():
+            weight = row['Probability'] / total_prob
+            allocation = capital * weight
+            allocation = min(allocation, capital * max_per_stock)
+
+            portfolio.append({
+                "Stock": row['Stock'],
+                "Probability": row['Probability'],
+                "Allocation": round(allocation),
+                "StopLoss": f"{int(stop_loss_pct*100)}%"
+            })
+
+    # ==============================
+    # 🔹 STEP 7: PRINT PORTFOLIO
+    # ==============================
     print("\n💼 AI PORTFOLIO:\n")
 
     if portfolio:
@@ -135,36 +149,22 @@ if not top_stocks.empty:
     else:
         print("No strong portfolio today")
 
-    # ✅ Print all scores
-    print("\n📊 ALL STOCK SCORES:\n")
-    print(df)
+    # ==============================
+    # 🔹 STEP 8: BUY / SELL SIGNALS
+    # ==============================
+    buy_signals = df[(df['Probability'] > 0.6) & (df['Trend'] == True)].head(3)
+    sell_signals = df[(df['Probability'] < 0.4) & (df['Trend'] == False)].head(3)
 
-    # Filters
-    buy_signals = df[(df['Probability'] > 0.6) & (df['Trend'] == True)]
-    sell_signals = df[(df['Probability'] < 0.4) & (df['Trend'] == False)]
+    print("\n🔥 STRONG BUY SIGNALS:\n", buy_signals)
+    print("\n⚠️ STRONG SELL SIGNALS:\n", sell_signals)
 
-    # Top 3 only
-    buy_signals = buy_signals.head(3)
-    sell_signals = sell_signals.head(3)
-
-    print("\n🔥 STRONG BUY SIGNALS:\n")
-    print(buy_signals)
-
-    print("\n⚠️ STRONG SELL SIGNALS:\n")
-    print(sell_signals)
-
-    print("\n📈 MARKET TREND:", "UPTREND ✅" if market_uptrend else "DOWNTREND ❌")
-
-# Telegram config
-BOT_TOKEN = "7948884323:AAGzgVAa_Xmf9X89o4XsueVX4sJkA9EX_9k"
-CHAT_ID = "967212314"
-
-if not df.empty:
-
+    # ==============================
+    # 🔹 STEP 9: TELEGRAM MESSAGE
+    # ==============================
     message = "📊 AI STOCK SIGNALS\n\n"
+    message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
 
     # Portfolio
-    message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
     message += "💼 AI PORTFOLIO:\n"
     if portfolio:
         for p in portfolio:
@@ -172,30 +172,26 @@ if not df.empty:
     else:
         message += "No strong portfolio today\n"
 
-    message += "\n"
-
-    # BUY signals
-    message += "🔥 BUY SIGNALS:\n"
+    # Buy
+    message += "\n🔥 BUY SIGNALS:\n"
     if not buy_signals.empty:
-        for i, row in buy_signals.iterrows():
+        for _, row in buy_signals.iterrows():
             label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
-            message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
+            message += f"{row['Stock']} - {round(row['Probability'],2)} ({label})\n"
     else:
         message += "No strong buys\n"
 
-    # SELL signals
+    # Sell
     message += "\n⚠️ SELL SIGNALS:\n"
     if not sell_signals.empty:
-        for i, row in sell_signals.iterrows():
+        for _, row in sell_signals.iterrows():
             label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
-            message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
+            message += f"{row['Stock']} - {round(row['Probability'],2)} ({label})\n"
     else:
         message += "No strong sells\n"
 
-    # Send message
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": message
-    })
+    # Send Telegram
+    requests.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        data={"chat_id": CHAT_ID, "text": message}
+    )
