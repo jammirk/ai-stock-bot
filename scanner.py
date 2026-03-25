@@ -7,11 +7,11 @@ from xgboost import XGBClassifier
 
 # List of stocks (you can expand later)
 stocks = [
-    "RELIANCE.NS",
-    "TCS.NS",
-    "INFY.NS",
-    "HDFCBANK.NS",
-    "ICICIBANK.NS"
+    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
+    "HINDUNILVR.NS","ITC.NS","LT.NS","SBIN.NS","AXISBANK.NS",
+    "KOTAKBANK.NS","BHARTIARTL.NS","ASIANPAINT.NS","MARUTI.NS",
+    "SUNPHARMA.NS","TITAN.NS","ULTRACEMCO.NS","WIPRO.NS",
+    "ONGC.NS","NTPC.NS"
 ]
 
 results = []
@@ -79,8 +79,14 @@ if df.empty:
 else:
     df = df.sort_values(by="Probability", ascending=False)
 
+    print("\n📊 ALL STOCK SCORES:\n")
+    print(df)
+    
     buy_signals = df[(df['Probability'] > 0.6) & (df['Trend'] == True)]
     sell_signals = df[(df['Probability'] < 0.4) & (df['Trend'] == False)]
+
+    buy_signals = buy_signals.head(3)
+    sell_signals = sell_signals.head(3)
 
     print("\n🔥 STRONG BUY SIGNALS:\n")
     print(buy_signals)
@@ -99,7 +105,8 @@ message = "📊 AI STOCK SIGNALS\n\n"
 message += "🔥 BUY SIGNALS:\n"
 if not buy_signals.empty:
     for i, row in buy_signals.iterrows():
-        message += f"{row['Stock']} - {round(row['Probability'], 2)}\n"
+        label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
+message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
 else:
     message += "No strong buys\n"
 
@@ -107,7 +114,8 @@ else:
 message += "\n⚠️ SELL SIGNALS:\n"
 if not sell_signals.empty:
     for i, row in sell_signals.iterrows():
-        message += f"{row['Stock']} - {round(row['Probability'], 2)}\n"
+        label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
+message += f"{row['Stock']} - {round(row['Probability'], 2)} ({label})\n"
 else:
     message += "No strong sells\n"
 
