@@ -5,7 +5,11 @@ import ta
 import requests
 from xgboost import XGBClassifier
 
-capital = 100000  # change as needed
+capital = 100000
+
+max_per_stock = 0.4      # max 40% in one stock
+risk_per_trade = 0.02    # risk 2% per trade
+stop_loss_pct = 0.05     # 5% stop loss
 
 # List of stocks (you can expand later)
 stocks = [
@@ -85,27 +89,36 @@ else:
     top_stocks = df[(df['Probability'] > 0.55) & (df['Trend'] == True)].head(3)
 
     # 🔥 STEP : Allocate capital
-    portfolio = []
+    # 🚀 STEP 2: MODIFY PORTFOLIO LOGIC (ADD HERE)
 
-    if not top_stocks.empty:
-        total_prob = top_stocks['Probability'].sum()
+portfolio = []
 
-        for i, row in top_stocks.iterrows():
-            weight = row['Probability'] / total_prob
-            allocation = round(capital * weight)
+if not top_stocks.empty:
+    total_prob = top_stocks['Probability'].sum()
 
-            portfolio.append({
-                "Stock": row['Stock'],
-                "Probability": row['Probability'],
-                "Allocation": allocation
-            })
+    for i, row in top_stocks.iterrows():
+        weight = row['Probability'] / total_prob
 
+        # Raw allocation
+        allocation = capital * weight
+
+        # Apply max cap per stock
+        max_allowed = capital * max_per_stock
+        allocation = min(allocation, max_allowed)
+
+        portfolio.append({
+            "Stock": row['Stock'],
+            "Probability": row['Probability'],
+            "Allocation": round(allocation),
+            "StopLoss": f"{int(stop_loss_pct*100)}%"
+        })
+        
     # 🔥 STEP: Print portfolio
     print("\n💼 AI PORTFOLIO:\n")
 
     if portfolio:
         for p in portfolio:
-            print(f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']}")
+            print(f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']}")
     else:
         print("No strong portfolio today")
 
@@ -139,7 +152,7 @@ if not df.empty:
     message += "💼 AI PORTFOLIO:\n"
     if portfolio:
         for p in portfolio:
-            message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']}\n"
+            message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']}\n"
     else:
         message += "No strong portfolio today\n"
 
