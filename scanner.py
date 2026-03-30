@@ -224,6 +224,14 @@ else:
     df = df.sort_values(by="Score", ascending=False)
 
     print("\n📊 ALL STOCK SCORES:\n", df)
+    
+    # ==============================
+    # 🔹 WATCHLIST (TOP OPPORTUNITIES)
+    # ==============================
+    watchlist = df.head(5)
+
+    print("\n👀 WATCHLIST (NEAR SIGNALS):\n")
+    print(watchlist[['Stock','Probability','Score']])
 
     print("\n📊 BACKTEST RESULTS:\n")
     print(df[['Stock','Strategy_Return','Market_Return']])
@@ -279,6 +287,11 @@ else:
             message += f"{p['Stock']} → ₹{p['Allocation']} | SL: {p['SL']}\n"
     else:
         message += "No trades today\n"
+
+    message += "\n👀 WATCHLIST:\n"
+    
+    for _, row in watchlist.iterrows():
+        message += f"{row['Stock']} - {round(row['Probability'],2)}\n"
 
 # ==============================
 # 🔹 TELEGRAM SEND
