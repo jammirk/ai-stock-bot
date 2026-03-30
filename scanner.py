@@ -222,17 +222,49 @@ if not df.empty:
     for _, row in top_stocks.iterrows():
         allocation = min(capital * (row['Probability']/total_prob), capital*max_per_stock)
 
-        sl = row['Price'] - (row['ATR'] * 2)
-        target = row['Price'] + (row['ATR'] * 4)
+        entry = row['Price']
+        atr = row['ATR']
+        
+        # Initial SL
+        sl = entry - (atr * 2)
+        
+        # Target (2R)
+        target = entry + (atr * 4)
+        
+        # Trailing SL trigger (1R)
+        trail_trigger = entry + (atr * 2)
 
         portfolio.append({
             "Stock": row['Stock'],
-            "Entry": round(row['Price'],2),
+            "Entry": round(entry,2),
             "SL": round(sl,2),
             "Target": round(target,2),
+            "TrailTrigger": round(trail_trigger,2),
             "Allocation": round(allocation)
         })
+        
+# ==============================
+# 🔹 TRAILING LOGIC (SIMULATION)
+# ==============================
+for p in portfolio:
+    current_price = p['Entry']  # placeholder (replace later with live price)
 
+    # Move SL to cost when 1R hit
+    if current_price >= p['TrailTrigger']:
+        p['SL'] = p['Entry']
+
+    # Move SL higher if strong move
+    if current_price > p['Entry'] * 1.03:
+        p['SL'] = round(current_price - (p['Entry'] * 0.02), 2)
+
+    # Profit booking
+    if current_price >= p['Target']:
+        p['Status'] = "BOOK PROFIT ✅"
+    elif current_price <= p['SL']:
+        p['Status'] = "STOP LOSS ❌"
+    else:
+        p['Status'] = "HOLD ⏳"
+        
 # ==============================
 # 🔹 STEP 7: MESSAGE
 # ==============================
@@ -240,7 +272,14 @@ message += "💼 PORTFOLIO:\n"
 
 if portfolio:
     for p in portfolio:
-        message += f"{p['Stock']} | Entry ₹{p['Entry']} | SL ₹{p['SL']} | Target ₹{p['Target']}\n"
+        message += (
+            f"{p['Stock']}\n"
+            f"Entry: ₹{p['Entry']}\n"
+            f"SL: ₹{p['SL']}\n"
+            f"Target: ₹{p['Target']}\n"
+            f"Trail Trigger: ₹{p['TrailTrigger']}\n"
+            f"Status: {p.get('Status','NEW')}\n\n"
+        )
 else:
     message += "No trades today\n"
 
