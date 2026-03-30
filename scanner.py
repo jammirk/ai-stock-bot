@@ -138,7 +138,8 @@ else:
 if market_uptrend:
     top_stocks = df[
         (df['Probability'] > 0.6) & 
-        (df['Trend'] == True)
+        (df['Trend'] == True) &
+        (df['Price'] < 1500)
     ].sort_values(by="Score", ascending=False).head(3)
 else:
     top_stocks = pd.DataFrame()
