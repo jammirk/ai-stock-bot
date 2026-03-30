@@ -112,6 +112,7 @@ for stock in stocks:
 # 🔹 STEP 4: DATAFRAME
 # ==============================
 df = pd.DataFrame(results)
+df['Score'] = df['Probability'] / df['Price'].replace(0, 1)
 
 # ==============================
 # 🔹 ALWAYS PREPARE MESSAGE
@@ -132,14 +133,15 @@ else:
     print("\n📈 MARKET TREND:", "UPTREND ✅" if market_uptrend else "DOWNTREND ❌")
 
     # ==============================
-    # 🔹 STEP 5: PORTFOLIO SELECTION
+    # 🔹 STEP 5: PORTFOLIO SELECTION (FIXED)
     # ==============================
-    if market_uptrend:
+if market_uptrend:
     top_stocks = df[
-        (df['Probability'] > 0.65) & 
-        (df['Trend'] == True) & 
-        (df['Price'] < 1500)
-    ].sort_values(by="Probability", ascending=False).head(3)
+        (df['Probability'] > 0.6) & 
+        (df['Trend'] == True)
+    ].sort_values(by="Score", ascending=False).head(3)
+else:
+    top_stocks = pd.DataFrame()
 
     # ==============================
     # 🔹 STEP 6: PORTFOLIO ALLOCATION
