@@ -113,8 +113,15 @@ for stock in stocks:
 # ==============================
 df = pd.DataFrame(results)
 
+# ==============================
+# 🔹 ALWAYS PREPARE MESSAGE
+# ==============================
+message = "📊 AI STOCK SIGNALS\n\n"
+message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
+
 if df.empty:
     print("❌ No data available")
+    message += "⚠️ No data available today\n"
 
 else:
     df = df.sort_values(by="Probability", ascending=False)
@@ -132,31 +139,29 @@ else:
     else:
         top_stocks = pd.DataFrame()
 
-   
- # ==============================
-# 🔹 STEP 6: PORTFOLIO ALLOCATION
-# ==============================
-portfolio = []
+    # ==============================
+    # 🔹 STEP 6: PORTFOLIO ALLOCATION
+    # ==============================
+    portfolio = []
 
-if not top_stocks.empty:
-    total_prob = top_stocks['Probability'].sum()
+    if not top_stocks.empty:
+        total_prob = top_stocks['Probability'].sum()
 
-    for _, row in top_stocks.iterrows():
-        weight = row['Probability'] / total_prob
-        allocation = capital * weight
-        allocation = min(allocation, capital * max_per_stock)
+        for _, row in top_stocks.iterrows():
+            weight = row['Probability'] / total_prob
+            allocation = capital * weight
+            allocation = min(allocation, capital * max_per_stock)
 
-        # 🔥 Dynamic stop loss (CORRECT PLACE)
-        stop_loss_price = row['Price'] - (row['ATR'] * 2)
-        stop_loss_pct_dynamic = ((row['Price'] - stop_loss_price) / row['Price']) * 100
+            stop_loss_price = row['Price'] - (row['ATR'] * 2)
+            stop_loss_pct_dynamic = ((row['Price'] - stop_loss_price) / row['Price']) * 100
 
-        portfolio.append({
-            "Stock": row['Stock'],
-            "Probability": row['Probability'],
-            "Allocation": round(allocation),
-            "StopLoss": f"{round(stop_loss_pct_dynamic,1)}%",
-            "SL_Price": round(stop_loss_price, 2)
-        })
+            portfolio.append({
+                "Stock": row['Stock'],
+                "Probability": row['Probability'],
+                "Allocation": round(allocation),
+                "StopLoss": f"{round(stop_loss_pct_dynamic,1)}%",
+                "SL_Price": round(stop_loss_price, 2)
+            })
 
     # ==============================
     # 🔹 STEP 7: PRINT PORTFOLIO
@@ -165,9 +170,9 @@ if not top_stocks.empty:
 
     if portfolio:
         for p in portfolio:
-            print(f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}")
+            print(f"{p['Stock']} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}")
     else:
-        print("No strong portfolio today")
+        print("No trades due to market condition")
 
     # ==============================
     # 🔹 STEP 8: BUY / SELL SIGNALS
@@ -181,18 +186,14 @@ if not top_stocks.empty:
     # ==============================
     # 🔹 STEP 9: TELEGRAM MESSAGE
     # ==============================
-    message = "📊 AI STOCK SIGNALS\n\n"
-    message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
-
-    # Portfolio
     message += "💼 AI PORTFOLIO:\n"
+
     if portfolio:
         for p in portfolio:
-            message += f"{p['Stock']} - {round(p['Probability'],2)} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}\n"
+            message += f"{p['Stock']} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}\n"
     else:
-        message += "No strong portfolio today\n"
+        message += "No trades due to market condition\n"
 
-    # Buy
     message += "\n🔥 BUY SIGNALS:\n"
     if not buy_signals.empty:
         for _, row in buy_signals.iterrows():
@@ -201,7 +202,6 @@ if not top_stocks.empty:
     else:
         message += "No strong buys\n"
 
-    # Sell
     message += "\n⚠️ SELL SIGNALS:\n"
     if not sell_signals.empty:
         for _, row in sell_signals.iterrows():
@@ -210,8 +210,10 @@ if not top_stocks.empty:
     else:
         message += "No strong sells\n"
 
-    # Send Telegram
-    response = requests.post(
+# ==============================
+# 🔹 ALWAYS SEND TELEGRAM
+# ==============================
+response = requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
     data={"chat_id": CHAT_ID, "text": message}
 )
