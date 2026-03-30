@@ -136,11 +136,14 @@ else:
     # 🔹 STEP 5: PORTFOLIO SELECTION (FIXED)
     # ==============================
 if market_uptrend:
-    top_stocks = df[
-        (df['Probability'] > 0.6) & 
+    filtered_df = df[
+        (df['Probability'] > 0.6) &
         (df['Trend'] == True) &
-        (df['Price'] < 1500)
-    ].sort_values(by="Score", ascending=False).head(3)
+        (df['Price'] < 1500)   # ✅ STRICT PRICE FILTER
+    ]
+
+    top_stocks = filtered_df.sort_values(by="Score", ascending=False).head(3)
+
 else:
     top_stocks = pd.DataFrame()
 
