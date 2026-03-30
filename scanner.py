@@ -308,20 +308,20 @@ else:
                 "Target": round(target_price, 2)
             })
 
-    # ==============================
-    # 🔹 STEP 7: MESSAGE
-    # ==============================
-    message += "💼 PORTFOLIO:\n"
+# ==============================
+# 🔹 STEP 7: MESSAGE
+# ==============================
+message += "💼 PORTFOLIO:\n"
 
-if portfolio:
-    for p in portfolio:
-        message += (
-            f"{p['Stock']}\n"
-            f"Entry: ₹{p['Entry']}\n"
-            f"SL: ₹{p['SL']}\n"
-            f"Target: ₹{p['Target']}\n\n"
-        )
-else:
+    if portfolio:
+        for p in portfolio:
+            message += (
+                f"{p['Stock']}\n"
+                f"Entry: ₹{p['Entry']}\n"
+                f"SL: ₹{p['SL']}\n"
+                f"Target: ₹{p['Target']}\n\n"
+            )
+    else:
     message += "No trades today\n"
     
 # ==============================
