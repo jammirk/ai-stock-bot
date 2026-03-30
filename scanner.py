@@ -197,7 +197,7 @@ for stock in stocks:
             "ATR": data.iloc[-1]['ATR'],
             "Price": close.iloc[-1],
             "Strategy_Return": strategy_return,
-            "Market_Return": market_return
+            "Market_Return": market_return,
             "Strategy_Return": strategy_return,
             "WinRate": win_rate,
             "MaxDrawdown": max_dd,
