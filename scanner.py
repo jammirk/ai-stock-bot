@@ -85,9 +85,8 @@ def get_live_price(symbol):
     try:
         data = yf.download(symbol, period="1d", interval="1m")
         if not data.empty:
-            return data['Close'].iloc[-1]
-        else:
-            return None
+            return float(data['Close'].iloc[-1])   # ✅ FIX HERE
+        return None
     except:
         return None
 
@@ -249,7 +248,7 @@ if not df.empty:
             "Entry": round(entry,2),
             "SL": round(sl,2),
             "Target": round(target,2),
-            "TrailTrigger": round(trail_trigger,2),
+            "TrailTrigger": float(round(trail_trigger,2)),
             "Allocation": round(allocation)
         })
         
@@ -262,27 +261,24 @@ for p in portfolio:
 
     if current_price is None:
         continue
-    
-    #  STORE LIVE PRICE 
+
+    current_price = float(current_price)
+    trail_trigger = float(p['TrailTrigger'])
+
     p['Live'] = round(current_price, 2)
 
-    # 🔥 Move SL to cost (no loss)
-    if current_price >= p['TrailTrigger']:
+    if current_price >= trail_trigger:
         p['SL'] = p['Entry']
 
-    # 🔥 Trail SL upward (lock profit)
     if current_price > p['Entry'] * 1.03:
         p['SL'] = round(current_price * 0.98, 2)
 
-    # 🔥 Profit booking
     if current_price >= p['Target']:
         p['Status'] = "BOOK PROFIT ✅"
-
     elif current_price <= p['SL']:
         p['Status'] = "STOP LOSS ❌"
-
     else:
-        p['Status'] = f"HOLD ⏳ (₹{round(current_price,2)})"
+        p['Status'] = "HOLD ⏳"
         
 # ==============================
 # 🔹 STEP 7: MESSAGE
