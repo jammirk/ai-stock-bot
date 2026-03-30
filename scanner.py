@@ -43,25 +43,41 @@ market_uptrend = nifty_close.iloc[-1] > nifty['MA50'].iloc[-1]
 def backtest_strategy(data):
     data = data.copy()
 
-    # Strategy: buy when signal = 1
     data['Signal'] = (
         (data['RSI'] > 55) &
         (data['MA20'] > data['MA50']) &
         (data['MACD'] > data['MACD_signal'])
     ).astype(int)
 
-    # Shift signal (next day execution)
     data['Position'] = data['Signal'].shift(1)
 
-    # Returns
     data['Market_Return'] = data['Close'].pct_change()
     data['Strategy_Return'] = data['Position'] * data['Market_Return']
 
-    # Cumulative
     data['Cumulative_Market'] = (1 + data['Market_Return']).cumprod()
     data['Cumulative_Strategy'] = (1 + data['Strategy_Return']).cumprod()
 
     return data
+    
+    def calculate_metrics(bt):
+    bt = bt.dropna()
+
+    returns = bt['Strategy_Return']
+
+    total_return = bt['Cumulative_Strategy'].iloc[-1] - 1
+
+    win_rate = (returns > 0).sum() / len(returns)
+
+    # Max Drawdown
+    cumulative = bt['Cumulative_Strategy']
+    peak = cumulative.cummax()
+    drawdown = (cumulative - peak) / peak
+    max_drawdown = drawdown.min()
+
+    # Sharpe Ratio (simple)
+    sharpe = returns.mean() / returns.std() if returns.std() != 0 else 0
+
+    return total_return, win_rate, max_drawdown, sharpe
 
 # ==============================
 # 🔹 STEP 3: STOCK LOOP
@@ -113,6 +129,7 @@ for stock in stocks:
         
         # 🔥 BACKTEST
         bt = backtest_strategy(data)
+        strategy_return, win_rate, max_dd, sharpe = calculate_metrics(bt)
         
         # Final performance
         strategy_return = bt['Cumulative_Strategy'].iloc[-1]
@@ -181,6 +198,10 @@ for stock in stocks:
             "Price": close.iloc[-1],
             "Strategy_Return": strategy_return,
             "Market_Return": market_return
+            "Strategy_Return": strategy_return,
+            "WinRate": win_rate,
+            "MaxDrawdown": max_dd,
+            "Sharpe": sharpe,
             })
 
     except Exception as e:
@@ -207,6 +228,9 @@ else:
     print("\n📊 BACKTEST RESULTS:\n")
     print(df[['Stock','Strategy_Return','Market_Return']])
 
+    print("\n📊 PERFORMANCE METRICS:\n")
+    print(df[['Stock','Strategy_Return','WinRate','MaxDrawdown','Sharpe']])
+
     # ==============================
     # 🔹 STEP 5: STOCK SELECTION
     # ==============================
@@ -215,7 +239,9 @@ else:
             (df['Probability'] > 0.6) &
             (df['Trend'] == True) &
             (df['Momentum'] == True) &
-            (df['Strategy_Return'] > df['Market_Return']) &  # 🔥 KEY FILTER
+            (df['Strategy_Return'] > 0.2) &   # 🔥 profitable
+            (df['WinRate'] > 0.5) &           # 🔥 consistency
+            (df['Sharpe'] > 0.5) &            # 🔥 risk-adjusted return
             (df['Price'] > 100) &
             (df['Price'] < 1500)
         ]
