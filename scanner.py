@@ -1,6 +1,5 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
 import ta
 import requests
 from xgboost import XGBClassifier
@@ -17,14 +16,16 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 # ==============================
-# 🔹 STEP 1: STOCK LIST
+# 🔹 STEP 1: STOCK LIST (AUTO UNIVERSE)
 # ==============================
 stocks = [
     "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
-    "HINDUNILVR.NS","ITC.NS","LT.NS","SBIN.NS","AXISBANK.NS",
-    "KOTAKBANK.NS","BHARTIARTL.NS","ASIANPAINT.NS","MARUTI.NS",
-    "SUNPHARMA.NS","TITAN.NS","ULTRACEMCO.NS","WIPRO.NS",
-    "ONGC.NS","NTPC.NS"
+    "SBIN.NS","AXISBANK.NS","KOTAKBANK.NS","ITC.NS","LT.NS",
+    "BHARTIARTL.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
+    "TITAN.NS","ULTRACEMCO.NS","WIPRO.NS","ONGC.NS","NTPC.NS",
+    "POWERGRID.NS","ADANIENT.NS","ADANIPORTS.NS","BAJFINANCE.NS",
+    "BAJAJFINSV.NS","HCLTECH.NS","TECHM.NS","NESTLEIND.NS",
+    "INDUSINDBK.NS","COALINDIA.NS","TATASTEEL.NS","JSWSTEEL.NS"
 ]
 
 results = []
@@ -41,11 +42,9 @@ nifty['MA50'] = nifty_close.rolling(50).mean()
 market_uptrend = nifty_close.iloc[-1] > nifty['MA50'].iloc[-1]
 
 # ==============================
-# 🔹 FUNCTIONS (FIXED POSITION)
+# 🔹 FUNCTIONS
 # ==============================
 def backtest_strategy(data):
-    data = data.copy()
-
     position = 0
     positions = []
 
@@ -54,7 +53,6 @@ def backtest_strategy(data):
             position = 1
         elif position == 1 and data['Exit'].iloc[i]:
             position = 0
-
         positions.append(position)
 
     data['Position'] = positions
@@ -75,15 +73,13 @@ def calculate_metrics(bt):
     total_return = bt['Cumulative_Strategy'].iloc[-1] - 1
     win_rate = (returns > 0).sum() / len(returns)
 
-    cumulative = bt['Cumulative_Strategy']
-    peak = cumulative.cummax()
-    drawdown = (cumulative - peak) / peak
-    max_drawdown = drawdown.min()
+    peak = bt['Cumulative_Strategy'].cummax()
+    drawdown = (bt['Cumulative_Strategy'] - peak) / peak
+    max_dd = drawdown.min()
 
     sharpe = returns.mean() / returns.std() if returns.std() != 0 else 0
 
-    return total_return, win_rate, max_drawdown, sharpe
-
+    return total_return, win_rate, max_dd, sharpe
 
 # ==============================
 # 🔹 STEP 3: STOCK LOOP
@@ -92,44 +88,51 @@ for stock in stocks:
     print(f"Processing {stock}...")
 
     try:
-        data = yf.download(stock, start="2020-01-01", end="2025-01-01")
+        data = yf.download(stock, start="2020-01-01")
         data.columns = data.columns.get_level_values(0)
 
+        if data.empty:
+            continue
+
         close = data['Close'].squeeze()
+
+        # ==============================
+        # 🔹 STEP 3A: PRE-FILTER
+        # ==============================
+        avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
+        price = close.iloc[-1]
+
+        if avg_volume < 1000000:
+            continue
+
+        if price < 50 or price > 2000:
+            continue
 
         # Indicators
         data['RSI'] = ta.momentum.RSIIndicator(close=close).rsi()
         data['MA20'] = close.rolling(20).mean()
         data['MA50'] = close.rolling(50).mean()
-        data['Trend'] = data['MA20'] > data['MA50']
 
         macd = ta.trend.MACD(close)
         data['MACD'] = macd.macd()
         data['MACD_signal'] = macd.macd_signal()
 
+        # ==============================
+        # 🔹 STEP 3B: MOMENTUM FILTER
+        # ==============================
+        if not (close.iloc[-1] > data['MA20'].iloc[-1] and data['RSI'].iloc[-1] > 50):
+            continue
+
         # Entry / Exit
         data['Entry'] = (
             (data['RSI'] > 55) &
             (data['MA20'] > data['MA50']) &
-            (data['MACD'] > data['MACD_signal']) &
-            (close > data['MA20'])
+            (data['MACD'] > data['MACD_signal'])
         )
 
         data['Exit'] = (
             (data['RSI'] < 45) |
-            (data['MACD'] < data['MACD_signal']) |
-            (close < data['MA20'])
-        )
-
-        # Returns
-        data['Returns'] = close.pct_change()
-        data['Return_3'] = close.pct_change(3)
-        data['Return_5'] = close.pct_change(5)
-
-        data['Momentum'] = (
-            (close > data['MA20']) &
-            (data['RSI'] > 55) &
-            (data['Returns'] > 0)
+            (data['MACD'] < data['MACD_signal'])
         )
 
         # ATR
@@ -146,14 +149,12 @@ for stock in stocks:
 
         data = data.dropna()
 
-        # 🔥 BACKTEST
+        # Backtest
         bt = backtest_strategy(data)
         strategy_return, win_rate, max_dd, sharpe = calculate_metrics(bt)
 
-        market_return = bt['Cumulative_Market'].iloc[-1]
-
-        # Features
-        features = ['RSI','MACD','MACD_signal','Returns','Return_3','Return_5','ATR','MA20','MA50','Volume']
+        # ML
+        features = ['RSI','MACD','MACD_signal','MA20','MA50','ATR','Volume']
 
         df_majority = data[data['Target'] == 0]
         df_minority = data[data['Target'] == 1]
@@ -161,22 +162,14 @@ for stock in stocks:
         if len(df_minority) == 0:
             continue
 
-        df_minority_upsampled = resample(
-            df_minority,
-            replace=True,
-            n_samples=len(df_majority),
-            random_state=42
-        )
-
-        data_balanced = pd.concat([df_majority, df_minority_upsampled])
+        df_minority = resample(df_minority, replace=True, n_samples=len(df_majority))
+        data_balanced = pd.concat([df_majority, df_minority])
 
         X = data_balanced[features]
         y = data_balanced['Target']
 
-        split = int(len(X) * 0.8)
-        model = XGBClassifier(n_estimators=300, max_depth=5, learning_rate=0.05)
-
-        model.fit(X.iloc[:split], y.iloc[:split])
+        model = XGBClassifier(n_estimators=200, max_depth=4)
+        model.fit(X, y)
 
         prob = model.predict_proba(X.iloc[-1:])[:, 1][0]
 
@@ -186,14 +179,10 @@ for stock in stocks:
         results.append({
             "Stock": stock,
             "Probability": prob,
-            "Trend": data.iloc[-1]['Trend'],
-            "Momentum": data.iloc[-1]['Momentum'],
             "ATR": data.iloc[-1]['ATR'],
-            "Price": close.iloc[-1],
+            "Price": price,
             "Strategy_Return": strategy_return,
-            "Market_Return": market_return,
             "WinRate": win_rate,
-            "MaxDrawdown": max_dd,
             "Sharpe": sharpe
         })
 
@@ -201,7 +190,7 @@ for stock in stocks:
         print(f"Error in {stock}: {e}")
 
 # ==============================
-# 🔹 STEP 4: DATAFRAME
+# 🔹 STEP 4: DATAFRAME + SCORING
 # ==============================
 df = pd.DataFrame(results)
 
@@ -210,70 +199,53 @@ message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: D
 
 portfolio = []
 
-if df.empty:
-    message += "No signals today\n"
+if not df.empty:
 
-else:
-    df['Score'] = df['Probability'] / df['Price'].replace(0, 1)
+    df['Score'] = (
+        df['Probability'] * 0.5 +
+        df['Sharpe'] * 0.3 +
+        df['Strategy_Return'] * 0.2
+    ) / df['Price']
+
     df = df.sort_values(by="Score", ascending=False)
 
-    print(df)
+    # ==============================
+    # 🔹 STEP 5: AUTO SELECTION
+    # ==============================
+    top_stocks = df.head(5)
 
-    # WATCHLIST
-    watchlist = df.head(5)
+    # ==============================
+    # 🔹 STEP 6: PORTFOLIO
+    # ==============================
+    total_prob = top_stocks['Probability'].sum()
 
-    # FILTER
-    if market_uptrend:
-        filtered_df = df[
-            (df['Probability'] > 0.6) &
-            (df['Trend']) &
-            (df['Momentum']) &
-            (df['Strategy_Return'] > 0.2) &
-            (df['WinRate'] > 0.5) &
-            (df['Sharpe'] > 0.5) &
-            (df['Price'] > 100) &
-            (df['Price'] < 1500)
-        ]
-        top_stocks = filtered_df.head(3)
-    else:
-        top_stocks = pd.DataFrame()
+    for _, row in top_stocks.iterrows():
+        allocation = min(capital * (row['Probability']/total_prob), capital*max_per_stock)
 
-    # PORTFOLIO
-    if not top_stocks.empty:
-        total_prob = top_stocks['Probability'].sum()
+        sl = row['Price'] - (row['ATR'] * 2)
+        target = row['Price'] + (row['ATR'] * 4)
 
-        for _, row in top_stocks.iterrows():
-            allocation = min(capital * (row['Probability']/total_prob), capital*max_per_stock)
-
-            sl_price = row['Price'] - (row['ATR'] * 2)
-            target_price = row['Price'] + (row['ATR'] * 4)
-
-            portfolio.append({
-                "Stock": row['Stock'],
-                "Entry": round(row['Price'],2),
-                "SL": round(sl_price,2),
-                "Target": round(target_price,2),
-                "Allocation": round(allocation)
-            })
+        portfolio.append({
+            "Stock": row['Stock'],
+            "Entry": round(row['Price'],2),
+            "SL": round(sl,2),
+            "Target": round(target,2),
+            "Allocation": round(allocation)
+        })
 
 # ==============================
-# 🔹 STEP 7: MESSAGE (FIXED)
+# 🔹 STEP 7: MESSAGE
 # ==============================
 message += "💼 PORTFOLIO:\n"
 
 if portfolio:
     for p in portfolio:
-        message += (
-            f"{p['Stock']}\n"
-            f"Entry: ₹{p['Entry']}\n"
-            f"SL: ₹{p['SL']}\n"
-            f"Target: ₹{p['Target']}\n\n"
-        )
+        message += f"{p['Stock']} | Entry ₹{p['Entry']} | SL ₹{p['SL']} | Target ₹{p['Target']}\n"
 else:
     message += "No trades today\n"
 
 # ==============================
-# 🔹 TELEGRAM
+# 🔹 STEP 8: TELEGRAM
 # ==============================
 response = requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
