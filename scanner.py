@@ -43,19 +43,29 @@ market_uptrend = nifty_close.iloc[-1] > nifty['MA50'].iloc[-1]
 def backtest_strategy(data):
     data = data.copy()
 
-    data['Signal'] = (
-        (data['RSI'] > 55) &
-        (data['MA20'] > data['MA50']) &
-        (data['MACD'] > data['MACD_signal'])
-    ).astype(int)
+    position = 0
+    positions = []
 
-    data['Position'] = data['Signal'].shift(1)
+    for i in range(len(data)):
+        # BUY
+        if position == 0 and data['Entry'].iloc[i]:
+            position = 1
 
+        # SELL
+        elif position == 1 and data['Exit'].iloc[i]:
+            position = 0
+
+        positions.append(position)
+
+    data['Position'] = positions
+
+    # Returns
     data['Market_Return'] = data['Close'].pct_change()
-    data['Strategy_Return'] = data['Position'] * data['Market_Return']
+    data['Strategy_Return'] = data['Position'].shift(1) * data['Market_Return']
 
-    data['Cumulative_Market'] = (1 + data['Market_Return']).cumprod()
+    # Cumulative performance
     data['Cumulative_Strategy'] = (1 + data['Strategy_Return']).cumprod()
+    data['Cumulative_Market'] = (1 + data['Market_Return']).cumprod()
 
     return data
     
@@ -100,6 +110,21 @@ for stock in stocks:
         macd = ta.trend.MACD(close)
         data['MACD'] = macd.macd()
         data['MACD_signal'] = macd.macd_signal()
+
+        # 🔥 ENTRY CONDITIONS
+        data['Entry'] = (
+            (data['RSI'] > 55) &
+            (data['MA20'] > data['MA50']) &
+            (data['MACD'] > data['MACD_signal']) &
+            (close > data['MA20'])  # breakout strength
+        )
+
+        # 🔥 EXIT CONDITIONS
+        data['Exit'] = (
+            (data['RSI'] < 45) |
+            (data['MACD'] < data['MACD_signal']) |
+            (close < data['MA20'])
+        )
 
         # Returns
         data['Returns'] = close.pct_change()
@@ -269,12 +294,18 @@ else:
             weight = row['Probability'] / total_prob
             allocation = min(capital * weight, capital * max_per_stock)
 
+            # 🔥 Dynamic Stop Loss
             sl_price = row['Price'] - (row['ATR'] * 2)
+            
+            # 🔥 Target (Risk:Reward 1:2)
+            target_price = row['Price'] + (row['ATR'] * 4)
 
             portfolio.append({
                 "Stock": row['Stock'],
                 "Allocation": round(allocation),
-                "SL": round(sl_price, 2)
+                "Entry": round(row['Price'], 2),
+                "SL": round(sl_price, 2),
+                "Target": round(target_price, 2)
             })
 
     # ==============================
@@ -282,17 +313,17 @@ else:
     # ==============================
     message += "💼 PORTFOLIO:\n"
 
-    if portfolio:
-        for p in portfolio:
-            message += f"{p['Stock']} → ₹{p['Allocation']} | SL: {p['SL']}\n"
-    else:
-        message += "No trades today\n"
-
-    message += "\n👀 WATCHLIST:\n"
+if portfolio:
+    for p in portfolio:
+        message += (
+            f"{p['Stock']}\n"
+            f"Entry: ₹{p['Entry']}\n"
+            f"SL: ₹{p['SL']}\n"
+            f"Target: ₹{p['Target']}\n\n"
+        )
+else:
+    message += "No trades today\n"
     
-    for _, row in watchlist.iterrows():
-        message += f"{row['Stock']} - {round(row['Probability'],2)}\n"
-
 # ==============================
 # 🔹 TELEGRAM SEND
 # ==============================
