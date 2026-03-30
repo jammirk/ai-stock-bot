@@ -32,7 +32,7 @@ results = []
 # ==============================
 # 🔹 STEP 2: MARKET FILTER
 # ==============================
-nifty = yf.download("^NSEI", start="2020-01-01", end="2025-01-01")
+nifty = yf.download("^NSEI", start="2020-01-01")
 nifty.columns = nifty.columns.get_level_values(0)
 
 nifty_close = nifty['Close'].squeeze()
