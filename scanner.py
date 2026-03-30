@@ -81,6 +81,16 @@ def calculate_metrics(bt):
 
     return total_return, win_rate, max_dd, sharpe
 
+def get_live_price(symbol):
+    try:
+        data = yf.download(symbol, period="1d", interval="1m")
+        if not data.empty:
+            return data['Close'].iloc[-1]
+        else:
+            return None
+    except:
+        return None
+
 # ==============================
 # 🔹 STEP 3: STOCK LOOP
 # ==============================
@@ -244,40 +254,49 @@ if not df.empty:
         })
         
 # ==============================
-# 🔹 TRAILING LOGIC (SIMULATION)
+# 🔹 LIVE TRAILING LOGIC
 # ==============================
 for p in portfolio:
-    current_price = p['Entry']  # placeholder (replace later with live price)
 
-    # Move SL to cost when 1R hit
+    current_price = get_live_price(p['Stock'])
+
+    if current_price is None:
+        continue
+    
+    #  STORE LIVE PRICE 
+    p['Live'] = round(current_price, 2)
+
+    # 🔥 Move SL to cost (no loss)
     if current_price >= p['TrailTrigger']:
         p['SL'] = p['Entry']
 
-    # Move SL higher if strong move
+    # 🔥 Trail SL upward (lock profit)
     if current_price > p['Entry'] * 1.03:
-        p['SL'] = round(current_price - (p['Entry'] * 0.02), 2)
+        p['SL'] = round(current_price * 0.98, 2)
 
-    # Profit booking
+    # 🔥 Profit booking
     if current_price >= p['Target']:
         p['Status'] = "BOOK PROFIT ✅"
+
     elif current_price <= p['SL']:
         p['Status'] = "STOP LOSS ❌"
+
     else:
-        p['Status'] = "HOLD ⏳"
+        p['Status'] = f"HOLD ⏳ (₹{round(current_price,2)})"
         
 # ==============================
 # 🔹 STEP 7: MESSAGE
 # ==============================
-message += "💼 PORTFOLIO:\n"
+message += "💼 PORTFOLIO (LIVE):\n"
 
 if portfolio:
     for p in portfolio:
         message += (
             f"{p['Stock']}\n"
             f"Entry: ₹{p['Entry']}\n"
+            f"Live: ₹{p.get('Live','-')}\n"
             f"SL: ₹{p['SL']}\n"
             f"Target: ₹{p['Target']}\n"
-            f"Trail Trigger: ₹{p['TrailTrigger']}\n"
             f"Status: {p.get('Status','NEW')}\n\n"
         )
 else:
