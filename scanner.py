@@ -135,9 +135,13 @@ else:
     # 🔹 STEP 5: PORTFOLIO SELECTION
     # ==============================
     if market_uptrend:
-        top_stocks = df[(df['Probability'] > 0.55) & (df['Trend'] == True)].head(3)
-    else:
-        top_stocks = pd.DataFrame()
+    top_stocks = df[
+        (df['Probability'] > 0.6) & 
+        (df['Trend'] == True) & 
+        (df['Price'] < 1000)   # 🔥 LOW PRICE FILTER
+    ].head(3)
+else:
+    top_stocks = pd.DataFrame()
 
     # ==============================
     # 🔹 STEP 6: PORTFOLIO ALLOCATION
