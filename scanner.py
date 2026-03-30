@@ -60,24 +60,24 @@ def backtest_strategy(data):
     return data
     
     def calculate_metrics(bt):
-    bt = bt.dropna()
-
-    returns = bt['Strategy_Return']
-
-    total_return = bt['Cumulative_Strategy'].iloc[-1] - 1
-
-    win_rate = (returns > 0).sum() / len(returns)
-
-    # Max Drawdown
-    cumulative = bt['Cumulative_Strategy']
-    peak = cumulative.cummax()
-    drawdown = (cumulative - peak) / peak
-    max_drawdown = drawdown.min()
-
-    # Sharpe Ratio (simple)
-    sharpe = returns.mean() / returns.std() if returns.std() != 0 else 0
-
-    return total_return, win_rate, max_drawdown, sharpe
+        bt = bt.dropna()
+    
+        returns = bt['Strategy_Return']
+    
+        total_return = bt['Cumulative_Strategy'].iloc[-1] - 1
+    
+        win_rate = (returns > 0).sum() / len(returns)
+    
+        # Max Drawdown
+        cumulative = bt['Cumulative_Strategy']
+        peak = cumulative.cummax()
+        drawdown = (cumulative - peak) / peak
+        max_drawdown = drawdown.min()
+    
+        # Sharpe Ratio
+        sharpe = returns.mean() / returns.std() if returns.std() != 0 else 0
+    
+        return total_return, win_rate, max_drawdown, sharpe
 
 # ==============================
 # 🔹 STEP 3: STOCK LOOP
