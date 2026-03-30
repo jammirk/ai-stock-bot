@@ -322,7 +322,7 @@ message += "💼 PORTFOLIO:\n"
                 f"Target: ₹{p['Target']}\n\n"
             )
     else:
-    message += "No trades today\n"
+        message += "No trades today\n"
     
 # ==============================
 # 🔹 TELEGRAM SEND
