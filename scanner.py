@@ -40,6 +40,29 @@ nifty['MA50'] = nifty_close.rolling(50).mean()
 
 market_uptrend = nifty_close.iloc[-1] > nifty['MA50'].iloc[-1]
 
+def backtest_strategy(data):
+    data = data.copy()
+
+    # Strategy: buy when signal = 1
+    data['Signal'] = (
+        (data['RSI'] > 55) &
+        (data['MA20'] > data['MA50']) &
+        (data['MACD'] > data['MACD_signal'])
+    ).astype(int)
+
+    # Shift signal (next day execution)
+    data['Position'] = data['Signal'].shift(1)
+
+    # Returns
+    data['Market_Return'] = data['Close'].pct_change()
+    data['Strategy_Return'] = data['Position'] * data['Market_Return']
+
+    # Cumulative
+    data['Cumulative_Market'] = (1 + data['Market_Return']).cumprod()
+    data['Cumulative_Strategy'] = (1 + data['Strategy_Return']).cumprod()
+
+    return data
+
 # ==============================
 # 🔹 STEP 3: STOCK LOOP
 # ==============================
@@ -87,6 +110,13 @@ for stock in stocks:
         data['Target'] = (data['Future_Return'] > 0.03).astype(int)
 
         data = data.dropna()
+        
+        # 🔥 BACKTEST
+        bt = backtest_strategy(data)
+        
+        # Final performance
+        strategy_return = bt['Cumulative_Strategy'].iloc[-1]
+        market_return = bt['Cumulative_Market'].iloc[-1]
 
         # Features
         features = [
@@ -148,8 +178,10 @@ for stock in stocks:
             "Trend": data.iloc[-1]['Trend'],
             "Momentum": data.iloc[-1]['Momentum'],
             "ATR": data.iloc[-1]['ATR'],
-            "Price": close.iloc[-1]
-        })
+            "Price": close.iloc[-1],
+            "Strategy_Return": strategy_return,
+            "Market_Return": market_return
+            })
 
     except Exception as e:
         print(f"Error in {stock}: {e}")
@@ -172,6 +204,9 @@ else:
 
     print("\n📊 ALL STOCK SCORES:\n", df)
 
+    print("\n📊 BACKTEST RESULTS:\n")
+    print(df[['Stock','Strategy_Return','Market_Return']])
+
     # ==============================
     # 🔹 STEP 5: STOCK SELECTION
     # ==============================
@@ -180,6 +215,7 @@ else:
             (df['Probability'] > 0.6) &
             (df['Trend'] == True) &
             (df['Momentum'] == True) &
+            (df['Strategy_Return'] > df['Market_Return']) &  # 🔥 KEY FILTER
             (df['Price'] > 100) &
             (df['Price'] < 1500)
         ]
