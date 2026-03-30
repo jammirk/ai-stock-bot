@@ -4,16 +4,14 @@ import numpy as np
 import ta
 import requests
 from xgboost import XGBClassifier
+from sklearn.utils import resample
+import os
 
 # ==============================
 # 🔹 STEP 0: CONFIG
 # ==============================
 capital = 100000
 max_per_stock = 0.4
-risk_per_trade = 0.02
-stop_loss_pct = 0.05
-
-import os
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
@@ -32,7 +30,7 @@ stocks = [
 results = []
 
 # ==============================
-# 🔹 STEP 2: MARKET FILTER (NIFTY)
+# 🔹 STEP 2: MARKET FILTER
 # ==============================
 nifty = yf.download("^NSEI", start="2020-01-01", end="2025-01-01")
 nifty.columns = nifty.columns.get_level_values(0)
@@ -64,15 +62,19 @@ for stock in stocks:
         data['MACD'] = macd.macd()
         data['MACD_signal'] = macd.macd_signal()
 
+        # Returns
         data['Returns'] = close.pct_change()
-        # 🔥 Momentum conditions
+        data['Return_3'] = close.pct_change(3)
+        data['Return_5'] = close.pct_change(5)
+
+        # Momentum filter
         data['Momentum'] = (
-            (close > data['MA20']) & 
-            (data['RSI'] > 55) & 
+            (close > data['MA20']) &
+            (data['RSI'] > 55) &
             (data['Returns'] > 0)
         )
-        
-        # 🔥 ATR (volatility)
+
+        # ATR
         atr = ta.volatility.AverageTrueRange(
             high=data['High'],
             low=data['Low'],
@@ -82,34 +84,71 @@ for stock in stocks:
 
         # Target
         data['Future_Return'] = close.shift(-5) / close - 1
-        data['Target'] = (data['Future_Return'] > 0.02).astype(int)
+        data['Target'] = (data['Future_Return'] > 0.03).astype(int)
 
         data = data.dropna()
 
-        features = ['RSI','MA20','MA50','MACD','MACD_signal','Returns']
-        X = data[features]
-        y = data['Target']
+        # Features
+        features = [
+            'RSI','MACD','MACD_signal','Returns',
+            'Return_3','Return_5','ATR','MA20','MA50','Volume'
+        ]
 
+        # ==============================
+        # 🔹 STEP 5: BALANCE DATA
+        # ==============================
+        df_majority = data[data['Target'] == 0]
+        df_minority = data[data['Target'] == 1]
+
+        if len(df_minority) == 0:
+            continue
+
+        df_minority_upsampled = resample(
+            df_minority,
+            replace=True,
+            n_samples=len(df_majority),
+            random_state=42
+        )
+
+        data_balanced = pd.concat([df_majority, df_minority_upsampled])
+
+        X = data_balanced[features]
+        y = data_balanced['Target']
+
+        # ==============================
+        # 🔹 STEP 6: TRAIN MODEL
+        # ==============================
         split = int(len(X) * 0.8)
 
-        X_train = X[:split]
-        y_train = y[:split]
+        X_train = X.iloc[:split]
+        y_train = y.iloc[:split]
 
-        model = XGBClassifier(n_estimators=100, max_depth=4)
+        model = XGBClassifier(
+            n_estimators=300,
+            max_depth=5,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42
+        )
+
         model.fit(X_train, y_train)
 
+        # ==============================
+        # 🔹 STEP 7: PREDICTION
+        # ==============================
         prob = model.predict_proba(X.iloc[-1:])[:, 1][0]
-        trend = data.iloc[-1]['Trend']
-        atr_value = data.iloc[-1]['ATR']
-        price = close.iloc[-1]
+
+        if prob < 0.55:
+            continue
 
         results.append({
             "Stock": stock,
             "Probability": prob,
-            "Trend": trend,
-            "ATR": atr_value,
-            "Price": price,
-            "Momentum": data.iloc[-1]['Momentum']   # ✅ ADD THIS
+            "Trend": data.iloc[-1]['Trend'],
+            "Momentum": data.iloc[-1]['Momentum'],
+            "ATR": data.iloc[-1]['ATR'],
+            "Price": close.iloc[-1]
         })
 
     except Exception as e:
@@ -119,45 +158,37 @@ for stock in stocks:
 # 🔹 STEP 4: DATAFRAME
 # ==============================
 df = pd.DataFrame(results)
-df['Score'] = df['Probability'] / df['Price'].replace(0, 1)
 
-# ==============================
-# 🔹 ALWAYS PREPARE MESSAGE
-# ==============================
 message = "📊 AI STOCK SIGNALS\n\n"
 message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
 
 if df.empty:
     print("❌ No data available")
-    message += "⚠️ No data available today\n"
+    message += "No signals today\n"
 
 else:
-    df = df.sort_values(by="Probability", ascending=False)
+    df['Score'] = df['Probability'] / df['Price'].replace(0, 1)
+    df = df.sort_values(by="Score", ascending=False)
 
-    print("\n📊 ALL STOCK SCORES:\n")
-    print(df)
-
-    print("\n📈 MARKET TREND:", "UPTREND ✅" if market_uptrend else "DOWNTREND ❌")
+    print("\n📊 ALL STOCK SCORES:\n", df)
 
     # ==============================
-    # 🔹 STEP 5: PORTFOLIO SELECTION (FIXED)
+    # 🔹 STEP 5: STOCK SELECTION
     # ==============================
-if market_uptrend:
-    filtered_df = df[
-        (df['Probability'] > 0.6) &
-        (df['Trend'] == True) &
-        (df['Momentum'] == True) &   # 🔥 NEW FILTER
-        (df['Price'] > 100) &
-        (df['Price'] < 1500)
-    ]
-
-    top_stocks = filtered_df.sort_values(by="Score", ascending=False).head(3)
-
-else:
-    top_stocks = pd.DataFrame()
+    if market_uptrend:
+        filtered_df = df[
+            (df['Probability'] > 0.6) &
+            (df['Trend'] == True) &
+            (df['Momentum'] == True) &
+            (df['Price'] > 100) &
+            (df['Price'] < 1500)
+        ]
+        top_stocks = filtered_df.head(3)
+    else:
+        top_stocks = pd.DataFrame()
 
     # ==============================
-    # 🔹 STEP 6: PORTFOLIO ALLOCATION
+    # 🔹 STEP 6: PORTFOLIO
     # ==============================
     portfolio = []
 
@@ -166,69 +197,29 @@ else:
 
         for _, row in top_stocks.iterrows():
             weight = row['Probability'] / total_prob
-            allocation = capital * weight
-            allocation = min(allocation, capital * max_per_stock)
+            allocation = min(capital * weight, capital * max_per_stock)
 
-            stop_loss_price = row['Price'] - (row['ATR'] * 2)
-            stop_loss_pct_dynamic = ((row['Price'] - stop_loss_price) / row['Price']) * 100
+            sl_price = row['Price'] - (row['ATR'] * 2)
 
             portfolio.append({
                 "Stock": row['Stock'],
-                "Probability": row['Probability'],
                 "Allocation": round(allocation),
-                "StopLoss": f"{round(stop_loss_pct_dynamic,1)}%",
-                "SL_Price": round(stop_loss_price, 2)
+                "SL": round(sl_price, 2)
             })
 
     # ==============================
-    # 🔹 STEP 7: PRINT PORTFOLIO
+    # 🔹 STEP 7: MESSAGE
     # ==============================
-    print("\n💼 AI PORTFOLIO:\n")
+    message += "💼 PORTFOLIO:\n"
 
     if portfolio:
         for p in portfolio:
-            print(f"{p['Stock']} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}")
+            message += f"{p['Stock']} → ₹{p['Allocation']} | SL: {p['SL']}\n"
     else:
-        print("No trades due to market condition")
-
-    # ==============================
-    # 🔹 STEP 8: BUY / SELL SIGNALS
-    # ==============================
-    buy_signals = df[(df['Probability'] > 0.6) & (df['Trend'] == True)].head(3)
-    sell_signals = df[(df['Probability'] < 0.4) & (df['Trend'] == False)].head(3)
-
-    print("\n🔥 STRONG BUY SIGNALS:\n", buy_signals)
-    print("\n⚠️ STRONG SELL SIGNALS:\n", sell_signals)
-
-    # ==============================
-    # 🔹 STEP 9: TELEGRAM MESSAGE
-    # ==============================
-    message += "💼 AI PORTFOLIO:\n"
-
-    if portfolio:
-        for p in portfolio:
-            message += f"{p['Stock']} → ₹{p['Allocation']} | SL: {p['StopLoss']} @ {p['SL_Price']}\n"
-    else:
-        message += "No trades due to market condition\n"
-
-    message += "\n🔥 BUY SIGNALS:\n"
-    if not buy_signals.empty:
-        for _, row in buy_signals.iterrows():
-            label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
-            message += f"{row['Stock']} - {round(row['Probability'],2)} ({label})\n"
-    else:
-        message += "No strong buys\n"
-
-    message += "\n⚠️ SELL SIGNALS:\n"
-    if not sell_signals.empty:
-        for _, row in sell_signals.iterrows():
-            label = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
-            message += f"{row['Stock']} - {round(row['Probability'],2)} ({label})\n"
-    else:
-        message += "No strong sells\n"
+        message += "No trades today\n"
 
 # ==============================
-# 🔹 ALWAYS SEND TELEGRAM
+# 🔹 TELEGRAM SEND
 # ==============================
 response = requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
