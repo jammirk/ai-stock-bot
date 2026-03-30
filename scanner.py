@@ -65,6 +65,12 @@ for stock in stocks:
         data['MACD_signal'] = macd.macd_signal()
 
         data['Returns'] = close.pct_change()
+        # 🔥 Momentum conditions
+        data['Momentum'] = (
+            (close > data['MA20']) & 
+            (data['RSI'] > 55) & 
+            (data['Returns'] > 0)
+        )
         
         # 🔥 ATR (volatility)
         atr = ta.volatility.AverageTrueRange(
@@ -102,7 +108,8 @@ for stock in stocks:
             "Probability": prob,
             "Trend": trend,
             "ATR": atr_value,
-            "Price": price
+            "Price": price,
+            "Momentum": data.iloc[-1]['Momentum']   # ✅ ADD THIS
         })
 
     except Exception as e:
@@ -139,7 +146,9 @@ if market_uptrend:
     filtered_df = df[
         (df['Probability'] > 0.6) &
         (df['Trend'] == True) &
-        (df['Price'] < 1500)   # ✅ STRICT PRICE FILTER
+        (df['Momentum'] == True) &   # 🔥 NEW FILTER
+        (df['Price'] > 100) &
+        (df['Price'] < 1500)
     ]
 
     top_stocks = filtered_df.sort_values(by="Score", ascending=False).head(3)
