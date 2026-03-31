@@ -18,6 +18,18 @@ load_dotenv()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
+from datetime import datetime
+
+def is_market_open():
+    now = datetime.utcnow()
+    hour = now.hour + 5.5  # convert to IST
+    return 9 <= hour <= 15.5
+
+# 🔥 STOP if market closed
+if not is_market_open():
+    print("Market closed. Skipping scan.")
+    exit()
+
 # ==============================
 # 🔹 STEP 1: STOCK LIST (AUTO UNIVERSE)
 # ==============================
@@ -100,7 +112,7 @@ for stock in stocks:
     print(f"Processing {stock}...")
 
     try:
-        data = yf.download(stock, start="2020-01-01")
+        data = yf.download(stock, start="2022-01-01")
         data.columns = data.columns.get_level_values(0)
 
         if data.empty:
@@ -220,6 +232,12 @@ if not df.empty:
     ) / df['Price']
 
     df = df.sort_values(by="Score", ascending=False)
+    # 🔥 WATCHLIST
+    watchlist = df.head(5)
+
+    message += "\n👀 WATCHLIST:\n"
+    for _, row in watchlist.iterrows():
+            message += f"{row['Stock']} - {round(row['Probability'],2)}\n"
 
     # ==============================
     # 🔹 STEP 5: AUTO SELECTION
@@ -246,16 +264,17 @@ if not df.empty:
         # Trailing SL trigger (1R)
         trail_trigger = entry + (atr * 2)
 
+        confidence = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
+
         portfolio.append({
             "Stock": row['Stock'],
             "Entry": round(entry,2),
             "SL": round(sl,2),
             "Target": round(target,2),
-            "TrailTrigger": float(round(trail_trigger,2)),
-            "Allocation": round(allocation)
+            "Confidence": confidence
+
         })
         
-
 # ==============================
 # 🔹 LIVE TRAILING LOGIC
 # ==============================
@@ -336,6 +355,9 @@ if portfolio:
             p['SL'],
             p['Target']
         )
+        message += "\n📊 SUMMARY:\n"
+        message += f"Stocks scanned: {len(stocks)}\n"
+        message += f"Opportunities found: {len(portfolio)}\n"
 
         # 🔥 Also build summary message
         message += (
@@ -344,6 +366,7 @@ if portfolio:
             f"Live: ₹{p.get('Live','-')}\n"
             f"SL: ₹{p['SL']}\n"
             f"Target: ₹{p['Target']}\n"
+            f"Confidence: {p['Confidence']}\n"
             f"Status: {p.get('Status','-')}\n\n"
         )
 
@@ -363,4 +386,7 @@ response = requests.post(
     }
 )
 
-print("Telegram response:", response.text)
+if response.status_code != 200:
+    print("Telegram Error:", response.text)
+else:
+    print("Telegram Sent Successfully ✅")

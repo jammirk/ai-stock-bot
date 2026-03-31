@@ -2,8 +2,9 @@ name: AI Stock Bot
 
 on:
   schedule:
-    - cron: '30 11 * * 1-5'   # Runs Mon-Fri (India time adjust below)
-  workflow_dispatch:          # Manual run button
+    - cron: '40 3 * * 1-5'   # Pre-market
+    - cron: '15 10 * * 1-5'  # After market
+  workflow_dispatch:
 
 jobs:
   run-bot:
