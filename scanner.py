@@ -4,60 +4,96 @@ import ta
 import requests
 from xgboost import XGBClassifier
 from sklearn.utils import resample
+import os
+from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 # ==============================
 # 🔹 STEP 0: CONFIG
 # ==============================
+load_dotenv()
+
 capital = 100000
 max_per_stock = 0.4
 
-import os
-from dotenv import load_dotenv
-load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-
-from datetime import datetime
-
-def is_market_open():
-    now = datetime.utcnow()
-    hour = now.hour + 5.5  # convert to IST
-    return 9 <= hour <= 15.5
-
-# 🔥 STOP if market closed
-if not is_market_open():
-    print("Market closed. Sending Last Data.")
-    
 # ==============================
-# 🔹 STEP 1: STOCK LIST (AUTO UNIVERSE)
+# 🔹 STEP 1: MARKET PHASE
+# ==============================
+def get_market_phase():
+    now = datetime.now(timezone.utc)
+    hour = now.hour + 5.5
+
+    if 9 <= hour < 15.5:
+        return "LIVE"
+    elif 8 <= hour < 9:
+        return "PRE"
+    else:
+        return "CLOSED"
+
+market_phase = get_market_phase()
+print("Market Phase:", market_phase)
+
+# ==============================
+# 🔹 STEP 2: STOCK LIST
 # ==============================
 stocks = [
     "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
     "SBIN.NS","AXISBANK.NS","KOTAKBANK.NS","ITC.NS","LT.NS",
     "BHARTIARTL.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
-    "TITAN.NS","ULTRACEMCO.NS","WIPRO.NS","ONGC.NS","NTPC.NS",
-    "POWERGRID.NS","ADANIENT.NS","ADANIPORTS.NS","BAJFINANCE.NS",
-    "BAJAJFINSV.NS","HCLTECH.NS","TECHM.NS","NESTLEIND.NS",
-    "INDUSINDBK.NS","COALINDIA.NS","TATASTEEL.NS","JSWSTEEL.NS"
+    "TITAN.NS","WIPRO.NS","ONGC.NS","NTPC.NS",
+    "POWERGRID.NS","ADANIENT.NS","ADANIPORTS.NS",
+    "HCLTECH.NS","TECHM.NS","INDUSINDBK.NS","COALINDIA.NS",
+    "TATASTEEL.NS","JSWSTEEL.NS"
 ]
 
 results = []
 
 # ==============================
-# 🔹 STEP 2: MARKET FILTER
+# 🔹 STEP 3: MARKET TREND
 # ==============================
-nifty = yf.download("^NSEI", start="2023-01-01")
-nifty.columns = nifty.columns.get_level_values(0)
+nifty = yf.download("^NSEI", period="1y")
+
+if isinstance(nifty.columns, pd.MultiIndex):
+    nifty.columns = nifty.columns.get_level_values(0)
 
 nifty_close = nifty['Close'].squeeze()
-nifty['MA50'] = nifty_close.rolling(50).mean()
+nifty_ma50 = nifty_close.rolling(50).mean()
 
-market_uptrend = nifty_close.iloc[-1] > nifty['MA50'].iloc[-1]
+last_close = float(nifty_close.iloc[-1])
+last_ma50 = float(nifty_ma50.iloc[-1]) if not pd.isna(nifty_ma50.iloc[-1]) else None
+
+market_uptrend = False if last_ma50 is None else last_close > last_ma50
 
 # ==============================
 # 🔹 FUNCTIONS
 # ==============================
+def get_live_price(symbol):
+    try:
+        data = yf.download(symbol, period="1d", interval="1m")
+        if not data.empty:
+            return float(data['Close'].iloc[-1])
+    except:
+        pass
+    return None
+
+
+def send_signal(stock, entry, sl, target):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    msg = (
+        f"📊 AI SIGNAL\n\n"
+        f"{stock}\n"
+        f"Entry: ₹{entry}\n"
+        f"SL: ₹{sl}\n"
+        f"Target: ₹{target}"
+    )
+
+    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+
+
 def backtest_strategy(data):
     position = 0
     positions = []
@@ -72,16 +108,13 @@ def backtest_strategy(data):
     data['Position'] = positions
     data['Market_Return'] = data['Close'].pct_change()
     data['Strategy_Return'] = data['Position'].shift(1) * data['Market_Return']
-
     data['Cumulative_Strategy'] = (1 + data['Strategy_Return']).cumprod()
-    data['Cumulative_Market'] = (1 + data['Market_Return']).cumprod()
 
     return data
 
 
 def calculate_metrics(bt):
     bt = bt.dropna()
-
     returns = bt['Strategy_Return']
 
     total_return = bt['Cumulative_Strategy'].iloc[-1] - 1
@@ -95,44 +128,30 @@ def calculate_metrics(bt):
 
     return total_return, win_rate, max_dd, sharpe
 
-def get_live_price(symbol):
-    try:
-        data = yf.download(symbol, period="1d", interval="1m")
-        if not data.empty:
-            return float(data['Close'].iloc[-1])   # ✅ FIX HERE
-        return None
-    except:
-        return None
-
 # ==============================
-# 🔹 STEP 3: STOCK LOOP
+# 🔹 STEP 4: STOCK LOOP
 # ==============================
 for stock in stocks:
     print(f"Processing {stock}...")
 
     try:
-        data = yf.download(stock, start="2022-01-01")
-        data.columns = data.columns.get_level_values(0)
+        data = yf.download(stock, period="2y")
 
         if data.empty:
             continue
 
-        close = data['Close'].squeeze()
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
 
-        # ==============================
-        # 🔹 STEP 3A: PRE-FILTER
-        # ==============================
-        avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
+        close = data['Close']
+
         price = close.iloc[-1]
+        avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
 
-        if avg_volume < 1000000:
+        if price < 50 or price > 2000 or avg_volume < 1_000_000:
             continue
 
-        if price < 50 or price > 2000:
-            continue
-
-        # Indicators
-        data['RSI'] = ta.momentum.RSIIndicator(close=close).rsi()
+        data['RSI'] = ta.momentum.RSIIndicator(close).rsi()
         data['MA20'] = close.rolling(20).mean()
         data['MA50'] = close.rolling(50).mean()
 
@@ -140,56 +159,36 @@ for stock in stocks:
         data['MACD'] = macd.macd()
         data['MACD_signal'] = macd.macd_signal()
 
-        # ==============================
-        # 🔹 STEP 3B: MOMENTUM FILTER
-        # ==============================
         if not (close.iloc[-1] > data['MA20'].iloc[-1] and data['RSI'].iloc[-1] > 50):
             continue
 
-        # Entry / Exit
-        data['Entry'] = (
-            (data['RSI'] > 55) &
-            (data['MA20'] > data['MA50']) &
-            (data['MACD'] > data['MACD_signal'])
-        )
+        data['Entry'] = (data['RSI'] > 55) & (data['MA20'] > data['MA50']) & (data['MACD'] > data['MACD_signal'])
+        data['Exit'] = (data['RSI'] < 45) | (data['MACD'] < data['MACD_signal'])
 
-        data['Exit'] = (
-            (data['RSI'] < 45) |
-            (data['MACD'] < data['MACD_signal'])
-        )
-
-        # ATR
-        atr = ta.volatility.AverageTrueRange(
-            high=data['High'],
-            low=data['Low'],
-            close=close
-        )
+        atr = ta.volatility.AverageTrueRange(data['High'], data['Low'], close)
         data['ATR'] = atr.average_true_range()
 
-        # Target
         data['Future_Return'] = close.shift(-5) / close - 1
         data['Target'] = (data['Future_Return'] > 0.03).astype(int)
 
         data = data.dropna()
 
-        # Backtest
         bt = backtest_strategy(data)
         strategy_return, win_rate, max_dd, sharpe = calculate_metrics(bt)
 
-        # ML
         features = ['RSI','MACD','MACD_signal','MA20','MA50','ATR','Volume']
 
-        df_majority = data[data['Target'] == 0]
-        df_minority = data[data['Target'] == 1]
+        df_major = data[data['Target'] == 0]
+        df_minor = data[data['Target'] == 1]
 
-        if len(df_minority) == 0:
+        if len(df_minor) == 0:
             continue
 
-        df_minority = resample(df_minority, replace=True, n_samples=len(df_majority))
-        data_balanced = pd.concat([df_majority, df_minority])
+        df_minor = resample(df_minor, replace=True, n_samples=len(df_major))
+        balanced = pd.concat([df_major, df_minor])
 
-        X = data_balanced[features]
-        y = data_balanced['Target']
+        X = balanced[features]
+        y = balanced['Target']
 
         model = XGBClassifier(n_estimators=200, max_depth=4)
         model.fit(X, y)
@@ -213,179 +212,77 @@ for stock in stocks:
         print(f"Error in {stock}: {e}")
 
 # ==============================
-# 🔹 STEP 4: DATAFRAME + SCORING
+# 🔹 STEP 5: DATAFRAME
 # ==============================
 df = pd.DataFrame(results)
-
-message = "📊 AI STOCK SIGNALS\n\n"
-message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
-
 portfolio = []
 
+# ==============================
+# 🔹 STEP 6: SELECTION
+# ==============================
 if not df.empty:
 
     df['Score'] = (
-        df['Probability'] * 0.5 +
-        df['Sharpe'] * 0.3 +
-        df['Strategy_Return'] * 0.2
+        df['Probability']*0.5 +
+        df['Sharpe']*0.3 +
+        df['Strategy_Return']*0.2
     ) / df['Price']
 
     df = df.sort_values(by="Score", ascending=False)
-    # 🔥 WATCHLIST
-    watchlist = df.head(5)
 
-    message += "\n👀 WATCHLIST:\n"
-    for _, row in watchlist.iterrows():
-            message += f"{row['Stock']} - {round(row['Probability'],2)}\n"
-
-    # ==============================
-    # 🔹 STEP 5: AUTO SELECTION
-    # ==============================
     top_stocks = df.head(5)
 
-    # ==============================
-    # 🔹 STEP 6: PORTFOLIO
-    # ==============================
     total_prob = top_stocks['Probability'].sum()
 
     for _, row in top_stocks.iterrows():
-        allocation = min(capital * (row['Probability']/total_prob), capital*max_per_stock)
 
         entry = row['Price']
         atr = row['ATR']
-        
-        # Initial SL
-        sl = entry - (atr * 2)
-        
-        # Target (2R)
-        target = entry + (atr * 4)
-        
-        # Trailing SL trigger (1R)
-        trail_trigger = entry + (atr * 2)
-
-        confidence = "HIGH" if row['Probability'] > 0.7 else "MEDIUM"
 
         portfolio.append({
             "Stock": row['Stock'],
             "Entry": round(entry,2),
-            "SL": round(sl,2),
-            "Target": round(target,2),
-            "Confidence": confidence
-
+            "SL": round(entry - atr*2,2),
+            "Target": round(entry + atr*4,2)
         })
-        
-# ==============================
-# 🔹 LIVE TRAILING LOGIC
-# ==============================
-for p in portfolio:
-
-    current_price = get_live_price(p['Stock'])
-
-    if current_price is None:
-        continue
-
-    current_price = float(current_price)
-    trail_trigger = float(p['TrailTrigger'])
-
-    p['Live'] = round(current_price, 2)
-
-    if current_price >= trail_trigger:
-        p['SL'] = p['Entry']
-
-    if current_price > p['Entry'] * 1.03:
-        p['SL'] = round(current_price * 0.98, 2)
-
-    if current_price >= p['Target']:
-        p['Status'] = "BOOK PROFIT ✅"
-    elif current_price <= p['SL']:
-        p['Status'] = "STOP LOSS ❌"
-    else:
-        p['Status'] = "HOLD ⏳"
 
 # ==============================
-# 🔹 TELEGRAM BUTTON FUNCTION
+# 🔹 STEP 7: MESSAGE
 # ==============================
-import json
-
-def send_signal(stock, entry, sl, target):
-
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-    message = (
-        f"📊 AI SIGNAL\n\n"
-        f"{stock}\n"
-        f"Entry: ₹{entry}\n"
-        f"SL: ₹{sl}\n"
-        f"Target: ₹{target}"
-    )
-
-    keyboard = {
-        "inline_keyboard": [
-            [
-                {"text": "✅ BUY", "callback_data": f"BUY|{stock}|{entry}|{sl}|{target}"},
-                {"text": "❌ SKIP", "callback_data": f"SKIP|{stock}"}
-            ]
-        ]
-    }
-
-    requests.post(url, json={
-        "chat_id": CHAT_ID,
-        "text": message,
-        "reply_markup": keyboard
-    })
-
-# ==============================
-# 🔹 STEP 7: MESSAGE + BUTTONS
-# ==============================
-
 message = "📊 AI STOCK SIGNALS\n\n"
+
+message += f"🧠 Mode: {market_phase}\n\n"
 message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
 
-if portfolio:
+# Watchlist
+if not df.empty:
+    message += "👀 WATCHLIST:\n"
+    for _, row in df.head(5).iterrows():
+        message += f"{row['Stock']} - {round(row['Probability'],2)}\n"
+    message += "\n"
 
-    message += "💼 PORTFOLIO (LIVE):\n\n"
+# Portfolio
+if portfolio:
+    message += "💼 PORTFOLIO:\n\n"
 
     for p in portfolio:
+        send_signal(p['Stock'], p['Entry'], p['SL'], p['Target'])
 
-        # 🔥 Send button signal
-        send_signal(
-            p['Stock'],
-            p['Entry'],
-            p['SL'],
-            p['Target']
-        )
-        message += "\n📊 SUMMARY:\n"
-        message += f"Stocks scanned: {len(stocks)}\n"
-        message += f"Opportunities found: {len(portfolio)}\n"
-
-        # 🔥 Also build summary message
         message += (
             f"{p['Stock']}\n"
             f"Entry: ₹{p['Entry']}\n"
-            f"Live: ₹{p.get('Live','-')}\n"
             f"SL: ₹{p['SL']}\n"
-            f"Target: ₹{p['Target']}\n"
-            f"Confidence: {p['Confidence']}\n"
-            f"Status: {p.get('Status','-')}\n\n"
+            f"Target: ₹{p['Target']}\n\n"
         )
-
 else:
     message += "No trades today\n"
 
-
 # ==============================
-# 🔹 STEP 8: TELEGRAM SUMMARY
+# 🔹 STEP 8: TELEGRAM
 # ==============================
-
 response = requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-    data={
-        "chat_id": CHAT_ID,
-        "text": message
-    }
+    data={"chat_id": CHAT_ID, "text": message}
 )
 
-if response.status_code != 200:
-    print("Telegram Error:", response.text)
-else:
-    print("Telegram Sent Successfully ✅")
+print("Telegram:", response.text)
