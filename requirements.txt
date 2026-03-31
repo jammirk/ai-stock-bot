@@ -5,3 +5,4 @@ ta
 xgboost
 scikit-learn
 requests
+kiteconnect
