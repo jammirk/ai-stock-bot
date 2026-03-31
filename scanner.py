@@ -4,13 +4,16 @@ import ta
 import requests
 from xgboost import XGBClassifier
 from sklearn.utils import resample
-import os
 
 # ==============================
 # 🔹 STEP 0: CONFIG
 # ==============================
 capital = 100000
 max_per_stock = 0.4
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
@@ -252,6 +255,7 @@ if not df.empty:
             "Allocation": round(allocation)
         })
         
+
 # ==============================
 # 🔹 LIVE TRAILING LOGIC
 # ==============================
@@ -279,31 +283,84 @@ for p in portfolio:
         p['Status'] = "STOP LOSS ❌"
     else:
         p['Status'] = "HOLD ⏳"
-        
+
 # ==============================
-# 🔹 STEP 7: MESSAGE
+# 🔹 TELEGRAM BUTTON FUNCTION
 # ==============================
-message += "💼 PORTFOLIO (LIVE):\n"
+import json
+
+def send_signal(stock, entry, sl, target):
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    message = (
+        f"📊 AI SIGNAL\n\n"
+        f"{stock}\n"
+        f"Entry: ₹{entry}\n"
+        f"SL: ₹{sl}\n"
+        f"Target: ₹{target}"
+    )
+
+    keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ BUY", "callback_data": f"BUY|{stock}|{entry}|{sl}|{target}"},
+                {"text": "❌ SKIP", "callback_data": f"SKIP|{stock}"}
+            ]
+        ]
+    }
+
+    requests.post(url, json={
+        "chat_id": CHAT_ID,
+        "text": message,
+        "reply_markup": keyboard
+    })
+
+# ==============================
+# 🔹 STEP 7: MESSAGE + BUTTONS
+# ==============================
+
+message = "📊 AI STOCK SIGNALS\n\n"
+message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
 
 if portfolio:
+
+    message += "💼 PORTFOLIO (LIVE):\n\n"
+
     for p in portfolio:
+
+        # 🔥 Send button signal
+        send_signal(
+            p['Stock'],
+            p['Entry'],
+            p['SL'],
+            p['Target']
+        )
+
+        # 🔥 Also build summary message
         message += (
             f"{p['Stock']}\n"
             f"Entry: ₹{p['Entry']}\n"
             f"Live: ₹{p.get('Live','-')}\n"
             f"SL: ₹{p['SL']}\n"
             f"Target: ₹{p['Target']}\n"
-            f"Status: {p.get('Status','NEW')}\n\n"
+            f"Status: {p.get('Status','-')}\n\n"
         )
+
 else:
     message += "No trades today\n"
 
+
 # ==============================
-# 🔹 STEP 8: TELEGRAM
+# 🔹 STEP 8: TELEGRAM SUMMARY
 # ==============================
+
 response = requests.post(
     f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-    data={"chat_id": CHAT_ID, "text": message}
+    data={
+        "chat_id": CHAT_ID,
+        "text": message
+    }
 )
 
 print("Telegram response:", response.text)
