@@ -6,3 +6,4 @@ xgboost
 scikit-learn
 requests
 kiteconnect
+python-dotenv
