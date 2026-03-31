@@ -27,9 +27,8 @@ def is_market_open():
 
 # 🔥 STOP if market closed
 if not is_market_open():
-    print("Market closed. Skipping scan.")
-    exit()
-
+    print("Market closed. Sending Last Data.")
+    
 # ==============================
 # 🔹 STEP 1: STOCK LIST (AUTO UNIVERSE)
 # ==============================
