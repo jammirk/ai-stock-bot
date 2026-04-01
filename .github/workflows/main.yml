@@ -2,8 +2,10 @@ name: AI Stock Bot
 
 on:
   schedule:
-    - cron: '40 3 * * 1-5'   # Pre-market
-    - cron: '15 10 * * 1-5'  # After market
+    - cron: '25 2 * * 1-5'   # 08:55 AM IST (PRE)
+    - cron: '45 3 * * 1-5'   # 09:15 AM IST (LIVE)
+    - cron: '15 10 * * 1-5'  # 03:45 PM IST (POST)
+    - cron: '*/30 2-10 * * 1-5'  # Every 30 minutes during business hours
   workflow_dispatch:
 
 jobs:

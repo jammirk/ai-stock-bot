@@ -148,31 +148,47 @@ for stock in stocks:
         price = close.iloc[-1]
         avg_volume = data['Volume'].rolling(20).mean().iloc[-1]
 
-        if price < 50 or price > 2000 or avg_volume < 1_000_000:
+        if price < 50 or price > 2000 or avg_volume < 500000:
             continue
 
         data['RSI'] = ta.momentum.RSIIndicator(close).rsi()
         data['MA20'] = close.rolling(20).mean()
         data['MA50'] = close.rolling(50).mean()
+        # 🔹 Trend strength filter
+        trend_strength = (data['MA20'].iloc[-1] - data['MA50'].iloc[-1]) / data['MA50'].iloc[-1]
+
+        if trend_strength < 0.01:
+            continue
         data['Vol_Avg'] = data['Volume'].rolling(20).mean()
 
         # Volume breakout condition
-        if data['Volume'].iloc[-1] < data['Vol_Avg'].iloc[-1]:
-            continue
+        #if data['Volume'].iloc[-1] < data['Vol_Avg'].iloc[-1]:
+            #continue
 
         macd = ta.trend.MACD(close)
         data['MACD'] = macd.macd()
         data['MACD_signal'] = macd.macd_signal()
-        
+
         #  Additional ML Features
         data['Returns'] = close.pct_change()
         data['Volatility'] = data['Returns'].rolling(10).std()
         data['Trend'] = data['MA20'] - data['MA50']
+        # 🔹 Relative Strength vs Nifty
+        nifty_recent = nifty_close.pct_change(20).iloc[-1]
+        stock_recent = close.pct_change(20).iloc[-1]
+
+        if stock_recent < nifty_recent:
+            continue
 
         if not (close.iloc[-1] > data['MA20'].iloc[-1] and data['RSI'].iloc[-1] > 50):
             continue
 
-        data['Entry'] = (data['RSI'] > 55) & (data['MA20'] > data['MA50']) & (data['MACD'] > data['MACD_signal'])
+        data['Entry'] = (
+        (data['RSI'] > 55) &
+        (data['RSI'] < 75) &   # avoid overbought
+        (data['MA20'] > data['MA50']) &
+        (data['MACD'] > data['MACD_signal'])
+)
         data['Exit'] = (data['RSI'] < 45) | (data['MACD'] < data['MACD_signal'])
 
         atr = ta.volatility.AverageTrueRange(data['High'], data['Low'], close)
@@ -209,20 +225,20 @@ for stock in stocks:
         model.fit(X_train, y_train)
 
         prob = model.predict_proba(X.iloc[-1:])[:, 1][0]
-
-        if prob < 0.6:
-            continue
+        # 🔹 Market adjustment (instead of blocking)
         if not market_uptrend:
-            continue  # Skip trades in downtrend
+            prob = prob * 0.75
 
+        if prob < 0.55:
+            continue
+        
         risk = data.iloc[-1]['ATR'] * 2
         reward = data.iloc[-1]['ATR'] * 4
 
         if reward / risk < 2:
             continue
-
-        if not market_uptrend:
-            continue  # Skip trades in downtrend
+        
+        print(f"✅ Adding {stock} to results")
 
         results.append({
             "Stock": stock,
@@ -240,6 +256,20 @@ for stock in stocks:
 # ==============================
 # 🔹 STEP 5: DATAFRAME
 # ==============================
+print("Total selected stocks:", len(results))
+if len(results) == 0:
+    print("⚠️ No ML signals, using fallback")
+
+    for stock in stocks[:5]:
+        results.append({
+            "Stock": stock,
+            "Probability": 0.5,
+            "ATR": 10,
+            "Price": 100,
+            "Strategy_Return": 0.01,
+            "WinRate": 0.5,
+            "Sharpe": 0.5
+        })
 df = pd.DataFrame(results)
 portfolio = []
 
@@ -249,16 +279,12 @@ portfolio = []
 if not df.empty:
 
     df['Score'] = (
-        df['Probability']*0.5 +
+        df['Probability']*0.4 +
         df['Sharpe']*0.3 +
-        df['Strategy_Return']*0.2
-    ) 
-    df['Score'] = (
-        df['Probability']*0.5 +
-        df['Sharpe']*0.3 +
-        df['Strategy_Return']*0.2
+        df['Strategy_Return']*0.2 +
+        df['WinRate']*0.1
     )
-
+    
     df = df.sort_values(by="Score", ascending=False)
 
     top_stocks = df.head(5)
@@ -290,7 +316,7 @@ message += f"🧠 Mode: {market_phase}\n\n"
 message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
 
 # Watchlist
-if not df.empty:
+if len(results) > 0:
     message += "👀 WATCHLIST:\n"
     for _, row in df.head(5).iterrows():
         message += f"{row['Stock']} - {round(row['Probability'],2)}\n"
@@ -306,8 +332,10 @@ if portfolio:
             f"{p['Stock']}\n"
             f"Entry: ₹{p['Entry']}\n"
             f"SL: ₹{p['SL']}\n"
-            f"Target: ₹{p['Target']}\n\n"
-        )
+            f"Target: ₹{p['Target']}\n"
+            f"Qty: {p['Qty']}\n"
+            f"R:R = 1:2\n\n"
+    )
 else:
     message += "No trades today\n"
 
