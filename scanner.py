@@ -154,10 +154,20 @@ for stock in stocks:
         data['RSI'] = ta.momentum.RSIIndicator(close).rsi()
         data['MA20'] = close.rolling(20).mean()
         data['MA50'] = close.rolling(50).mean()
+        data['Vol_Avg'] = data['Volume'].rolling(20).mean()
+
+        # Volume breakout condition
+        if data['Volume'].iloc[-1] < data['Vol_Avg'].iloc[-1]:
+            continue
 
         macd = ta.trend.MACD(close)
         data['MACD'] = macd.macd()
         data['MACD_signal'] = macd.macd_signal()
+        
+        #  Additional ML Features
+        data['Returns'] = close.pct_change()
+        data['Volatility'] = data['Returns'].rolling(10).std()
+        data['Trend'] = data['MA20'] - data['MA50']
 
         if not (close.iloc[-1] > data['MA20'].iloc[-1] and data['RSI'].iloc[-1] > 50):
             continue
@@ -169,14 +179,14 @@ for stock in stocks:
         data['ATR'] = atr.average_true_range()
 
         data['Future_Return'] = close.shift(-5) / close - 1
-        data['Target'] = (data['Future_Return'] > 0.03).astype(int)
+        data['Target'] = ((data['Future_Return'] > 0.025) & (data['RSI'] > 50)).astype(int)
 
         data = data.dropna()
 
         bt = backtest_strategy(data)
         strategy_return, win_rate, max_dd, sharpe = calculate_metrics(bt)
 
-        features = ['RSI','MACD','MACD_signal','MA20','MA50','ATR','Volume']
+        features = ['RSI','MACD','MACD_signal','MA20','MA50','ATR','Volume','Volatility','Trend']
 
         df_major = data[data['Target'] == 0]
         df_minor = data[data['Target'] == 1]
@@ -191,12 +201,28 @@ for stock in stocks:
         y = balanced['Target']
 
         model = XGBClassifier(n_estimators=200, max_depth=4)
-        model.fit(X, y)
+        split = int(len(X) * 0.8)
+
+        X_train, X_test = X.iloc[:split], X.iloc[split:]
+        y_train, y_test = y.iloc[:split], y.iloc[split:]
+
+        model.fit(X_train, y_train)
 
         prob = model.predict_proba(X.iloc[-1:])[:, 1][0]
 
-        if prob < 0.55:
+        if prob < 0.6:
             continue
+        if not market_uptrend:
+            continue  # Skip trades in downtrend
+
+        risk = data.iloc[-1]['ATR'] * 2
+        reward = data.iloc[-1]['ATR'] * 4
+
+        if reward / risk < 2:
+            continue
+
+        if not market_uptrend:
+            continue  # Skip trades in downtrend
 
         results.append({
             "Stock": stock,
@@ -226,7 +252,12 @@ if not df.empty:
         df['Probability']*0.5 +
         df['Sharpe']*0.3 +
         df['Strategy_Return']*0.2
-    ) / df['Price']
+    ) 
+    df['Score'] = (
+        df['Probability']*0.5 +
+        df['Sharpe']*0.3 +
+        df['Strategy_Return']*0.2
+    )
 
     df = df.sort_values(by="Score", ascending=False)
 
@@ -239,11 +270,15 @@ if not df.empty:
         entry = row['Price']
         atr = row['ATR']
 
+        allocation = min(capital * max_per_stock, capital / len(top_stocks))
+        quantity = int(allocation / entry)
+
         portfolio.append({
             "Stock": row['Stock'],
             "Entry": round(entry,2),
             "SL": round(entry - atr*2,2),
-            "Target": round(entry + atr*4,2)
+            "Target": round(entry + atr*4,2),
+            "Qty": quantity
         })
 
 # ==============================
@@ -266,8 +301,7 @@ if portfolio:
     message += "💼 PORTFOLIO:\n\n"
 
     for p in portfolio:
-        send_signal(p['Stock'], p['Entry'], p['SL'], p['Target'])
-
+        
         message += (
             f"{p['Stock']}\n"
             f"Entry: ₹{p['Entry']}\n"
