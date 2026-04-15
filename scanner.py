@@ -9,6 +9,12 @@ from dotenv import load_dotenv
 from datetime import datetime, timezone
 import json
 
+# Load previous alerts
+try:
+    with open("alerts.json", "r") as f:
+        alerted_stocks = set(json.load(f))
+except:
+    alerted_stocks = set()
     
 # ==============================
 # 🔹 STEP 0: CONFIG
@@ -38,18 +44,47 @@ def get_market_phase():
 market_phase = get_market_phase()
 print("Market Phase:", market_phase)
 
+def get_nse_stocks():
+    url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+    df = pd.read_csv(url)
+
+    stocks = df['SYMBOL'].tolist()
+    stocks = [s + ".NS" for s in stocks]
+
+    return stocks
+
 # ==============================
 # 🔹 STEP 2: STOCK LIST
 # ==============================
-stocks = [
-    "RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS",
-    "SBIN.NS","AXISBANK.NS","KOTAKBANK.NS","ITC.NS","LT.NS",
-    "BHARTIARTL.NS","ASIANPAINT.NS","MARUTI.NS","SUNPHARMA.NS",
-    "TITAN.NS","WIPRO.NS","ONGC.NS","NTPC.NS",
-    "POWERGRID.NS","ADANIENT.NS","ADANIPORTS.NS",
-    "HCLTECH.NS","TECHM.NS","INDUSINDBK.NS","COALINDIA.NS",
-    "TATASTEEL.NS","JSWSTEEL.NS"
-]
+
+def filter_liquid_stocks(stocks):
+    filtered = []
+
+    for stock in stocks[:300]:
+        try:
+            data = yf.download(stock, period="5d")
+
+            if data.empty:
+                continue
+
+            price = data['Close'].iloc[-1]
+            volume = data['Volume'].rolling(5).mean().iloc[-1]
+
+            if 50 < price < 2000 and volume > 500000:
+                filtered.append(stock)
+
+        except:
+            continue
+
+    return filtered
+
+
+# ✅ CREATE STOCK LIST HERE
+stocks = get_nse_stocks()
+stocks = filter_liquid_stocks(stocks)
+stocks = stocks[:200]
+
+print("Total stocks loaded:", len(stocks))
 
 strong_results = []
 backup_results = []
@@ -133,30 +168,40 @@ def calculate_metrics(bt):
     return total_return, win_rate, max_dd, sharpe
 
 def check_intraday_crash(stock):
-        try:
-            data = yf.download(stock, period="1d", interval="5m")
+    try:
+        data = yf.download(stock, period="1d", interval="5m")
 
-            if data.empty or len(data) < 5:
-                return None
+        if data.empty or len(data) < 5:
+            return None
 
-            close = data['Close']
+        close = data['Close']
 
-            # Last 3 candles (~15 mins)
-            recent = close.iloc[-3:]
-            change = (recent.iloc[-1] - recent.iloc[0]) / recent.iloc[0] * 100
+        # Last 3 candles (~15 mins)
+        recent = close.iloc[-3:]
+        change = (recent.iloc[-1] - recent.iloc[0]) / recent.iloc[0] * 100
 
-            # Volume spike
-            vol = data['Volume']
-            recent_vol = vol.iloc[-1]
-            avg_vol = vol.rolling(20).mean().iloc[-1]
+        # Volume spike
+        vol = data['Volume']
+        recent_vol = vol.iloc[-1]
+        avg_vol = vol.rolling(20).mean().iloc[-1]
 
-            if change <= -1.5 and recent_vol > avg_vol:
-                return round(change, 2)
+        if change <= -1.5 and recent_vol > avg_vol:
+            return round(change, 2)
 
-        except Exception as e:
-            print(f"Error in crash check for {stock}: {e}")
+    except Exception as e:
+        print(f"Error in crash check for {stock}: {e}")
 
-        return None
+    return None
+
+def get_nse_stocks():
+    url = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
+    df = pd.read_csv(url)
+
+    # Convert to Yahoo format
+    stocks = df['SYMBOL'].tolist()
+    stocks = [s + ".NS" for s in stocks]
+
+    return stocks
 
 # ==============================
 # 🔹 STEP 4: STOCK LOOP
@@ -185,9 +230,9 @@ for stock in stocks:
             "Sharpe": 0,
             "Type": "CRASH",
             "Crash": crash
-        })
-
-    continue
+            })
+        continue
+    
 
     print(f"Processing {stock}...")
 
