@@ -128,6 +128,32 @@ def calculate_metrics(bt):
 
     return total_return, win_rate, max_dd, sharpe
 
+    def check_intraday_crash(stock):
+        try:
+            data = yf.download(stock, period="1d", interval="5m")
+
+            if data.empty or len(data) < 5:
+                return None
+
+            close = data['Close']
+
+            # Last 3 candles (~15 mins)
+            recent = close.iloc[-3:]
+            change = (recent.iloc[-1] - recent.iloc[0]) / recent.iloc[0] * 100
+
+            # Volume spike
+            vol = data['Volume']
+            recent_vol = vol.iloc[-1]
+            avg_vol = vol.rolling(20).mean().iloc[-1]
+
+            if change <= -1.5 and recent_vol > avg_vol:
+                return round(change, 2)
+
+        except:
+            return None
+
+        return None
+
 # ==============================
 # 🔹 STEP 4: STOCK LOOP
 # ==============================
