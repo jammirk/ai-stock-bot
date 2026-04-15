@@ -7,7 +7,9 @@ from sklearn.utils import resample
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+import json
 
+    
 # ==============================
 # 🔹 STEP 0: CONFIG
 # ==============================
@@ -49,6 +51,8 @@ stocks = [
     "TATASTEEL.NS","JSWSTEEL.NS"
 ]
 
+strong_results = []
+backup_results = []
 results = []
 
 # ==============================
@@ -128,7 +132,7 @@ def calculate_metrics(bt):
 
     return total_return, win_rate, max_dd, sharpe
 
-    def check_intraday_crash(stock):
+def check_intraday_crash(stock):
         try:
             data = yf.download(stock, period="1d", interval="5m")
 
@@ -149,8 +153,8 @@ def calculate_metrics(bt):
             if change <= -1.5 and recent_vol > avg_vol:
                 return round(change, 2)
 
-        except:
-            return None
+        except Exception as e:
+            print(f"Error in crash check for {stock}: {e}")
 
         return None
 
@@ -158,6 +162,33 @@ def calculate_metrics(bt):
 # 🔹 STEP 4: STOCK LOOP
 # ==============================
 for stock in stocks:
+    # 🔹 Intraday crash check
+    crash = check_intraday_crash(stock)
+
+    if crash and stock not in alerted_stocks:
+        print(f"🚨 Crash detected in {stock}: {crash}%")
+
+        # ✅ ADD HERE
+        alerted_stocks.add(stock)
+
+        # ✅ SAVE TO FILE (PERSIST)
+        with open("alerts.json", "w") as f:
+            json.dump(list(alerted_stocks), f)
+
+        strong_results.append({
+            "Stock": stock,
+            "Probability": 1.0,
+            "ATR": 0,
+            "Price": 0,
+            "Strategy_Return": 0,
+            "WinRate": 0,
+            "Sharpe": 0,
+            "Type": "CRASH",
+            "Crash": crash
+        })
+
+    continue
+
     print(f"Processing {stock}...")
 
     try:
@@ -342,11 +373,13 @@ message += f"🧠 Mode: {market_phase}\n\n"
 message += "📈 MARKET: UPTREND ✅\n\n" if market_uptrend else "📉 MARKET: DOWNTREND ❌\n\n"
 
 # Watchlist
-if len(results) > 0:
-    message += "👀 WATCHLIST:\n"
-    for _, row in df.head(5).iterrows():
+for _, row in df.head(5).iterrows():
+    if 'Type' in row and row['Type'] == "CRASH":
+        message += f"🚨 {row['Stock']} - CRASH {row['Crash']}%\n"
+    elif 'Type' in row and row['Type'] == "LOWER_CIRCUIT":
+        message += f"🔴 {row['Stock']} - LOWER CIRCUIT\n"
+    else:
         message += f"{row['Stock']} - {round(row['Probability'],2)}\n"
-    message += "\n"
 
 # Portfolio
 if portfolio:
