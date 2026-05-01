@@ -1,0 +1,20 @@
+{
+  "starting_capital": 100000.0,
+  "cash": 100000.0,
+  "open_positions": [],
+  "closed_trades": [],
+  "equity_curve": [
+    {
+      "date": "2026-05-01",
+      "equity": 100000.0
+    },
+    {
+      "date": "2026-05-01T20:44:03",
+      "equity": 100000.0
+    },
+    {
+      "date": "2026-05-01T20:45:52",
+      "equity": 100000.0
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-05-01T20:45:52",
+  "paper_trading": true,
+  "starting_capital": 100000.0,
+  "cash": 100000.0,
+  "equity": 100000.0,
+  "realized_pnl": 0,
+  "unrealized_pnl": 0,
+  "total_pnl": 0,
+  "return_pct": 0.0,
+  "open_positions": 0,
+  "total_trades": 0,
+  "closed_trades": 0,
+  "win_rate": 0,
+  "paper_win_rate": 0,
+  "profit_factor": 0,
+  "paper_profit_factor": 0,
+  "avg_trade_return": 0,
+  "max_drawdown": 0,
+  "equity_curve": [
+    {
+      "date": "2026-05-01",
+      "equity": 100000.0
+    },
+    {
+      "date": "2026-05-01T20:44:03",
+      "equity": 100000.0
+    },
+    {
+      "date": "2026-05-01T20:45:52",
+      "equity": 100000.0
+    }
+  ],
+  "latest_signal_metrics": {
+    "selected": 0,
+    "avg_probability": 0,
+    "avg_win_rate": 0
+  }
+}
